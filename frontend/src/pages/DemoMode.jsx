@@ -1,0 +1,1059 @@
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { API_URL } from '../config';
+
+// ─── COLOR CONSTANTS ───────────────────────────────────────────
+const C = {
+  bg: '#0a0a1a', panel: '#0d0d22', border: '#00ff88',
+  green: '#00ff88', amber: '#ffaa00', cyan: '#00ddff',
+  red: '#ff4444', text: '#e0e0e0', muted: '#888',
+};
+
+// ─── FEATURE → HUMAN READABLE ─────────────────────────────────
+function featureToName(features) {
+  if (!features || features.length < 8) return 'Unknown Object';
+  const [hue, size, opacity, border, rotation, shape, saturation, lightness] = features;
+
+  const hueNames = [
+    [0.06, 'Red'], [0.18, 'Orange'], [0.32, 'Yellow'],
+    [0.5, 'Green'], [0.65, 'Cyan'], [0.75, 'Blue'],
+    [0.85, 'Purple'], [1.01, 'Pink'],
+  ];
+  const colorName = hueNames.find(([max]) => hue <= max)?.[1] || 'Red';
+
+  const shapeNames = ['Circle', 'Square', 'Triangle', 'Diamond', 'Pentagon'];
+  const shapeIdx = Math.min(Math.floor(shape * 1.2), shapeNames.length - 1);
+  const shapeName = shapeNames[shapeIdx];
+
+  const sizeName = size > 0.7 ? 'Large' : size > 0.4 ? 'Medium' : 'Small';
+  const brightName = lightness > 0.6 ? 'Bright' : lightness < 0.4 ? 'Dim' : '';
+
+  return [brightName, sizeName, colorName, shapeName].filter(Boolean).join(' ');
+}
+
+function featureToEmoji(features) {
+  if (!features || features.length < 8) return '🔮';
+  const hue = features[0];
+  if (hue < 0.12) return '🔴';
+  if (hue < 0.25) return '🟠';
+  if (hue < 0.4) return '🟡';
+  if (hue < 0.55) return '🟢';
+  if (hue < 0.7) return '🔵';
+  if (hue < 0.85) return '🟣';
+  return '🩷';
+}
+
+function generateSpeakerDescription(features, episode) {
+  if (!features || features.length < 8) return 'Examining the target object...';
+  const [hue, size, opacity, , , shape] = features;
+  const name = featureToName(features);
+  const templates = [
+    `Analyzing the ${name}. Its hue is ${hue.toFixed(2)}, size ${size.toFixed(2)}. Shape stands out clearly — I need to encode this precisely.`,
+    `The target is a ${name}. I observe strong color at ${hue.toFixed(2)} and ${size > 0.6 ? 'large' : 'compact'} dimensions. Let me craft a clear message.`,
+    `Focusing on the ${name}. The ${shape < 0.3 ? 'circular' : shape < 0.7 ? 'angular' : 'pointed'} form and ${opacity > 0.7 ? 'high' : 'moderate'} opacity are key features to transmit.`,
+    `Target acquired: ${name}. Encoding shape and color first, then size. Confidence is ${opacity > 0.8 ? 'high' : 'moderate'}.`,
+    `I see the ${name}. Its features are distinctive — hue at ${hue.toFixed(2)}, light at ${features[7]?.toFixed(2)}. Generating symbol sequence now.`,
+  ];
+  return templates[episode % templates.length];
+}
+
+function generateListenerInterpretation(features, targetFeatures, correct, episode) {
+  const chosenName = featureToName(features);
+  const targetName = featureToName(targetFeatures);
+  if (correct) {
+    const templates = [
+      `The message symbols clearly indicate the ${targetName}. My analysis matches — selecting with confidence.`,
+      `Decoding the symbol sequence... Shape and color patterns point to the ${targetName}. Confirmed.`,
+      `The symbol frequency suggests ${targetName}. Cross-referencing with candidate set — match found!`,
+      `Pattern recognition complete. The symbols encode a ${targetName}. High certainty.`,
+    ];
+    return templates[episode % templates.length];
+  } else {
+    const templates = [
+      `The symbols are ambiguous between the ${targetName} and ${chosenName}. I'll go with ${chosenName}.`,
+      `Decoding... I think it's the ${chosenName}. The symbol pattern is noisy, but this feels right.`,
+      `The message could represent the ${chosenName}. Some features overlap with ${targetName}. Choosing best guess.`,
+      `Signal quality is low. The symbols suggest ${chosenName}, but ${targetName} was also possible. Selected.`,
+    ];
+    return templates[episode % templates.length];
+  }
+}
+
+// ─── CRT OVERLAY ───────────────────────────────────────────────
+function CRTOverlay() {
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, pointerEvents: 'none', zIndex: 9999,
+      background: `repeating-linear-gradient(
+        0deg, transparent, transparent 2px, rgba(0,0,0,0.15) 2px, rgba(0,0,0,0.15) 4px
+      )`,
+      mixBlendMode: 'multiply',
+    }} />
+  );
+}
+
+// ─── TYPEWRITER TEXT ───────────────────────────────────────────
+function TypewriterText({ text, speed = 30, onComplete, style }) {
+  const [displayed, setDisplayed] = useState('');
+  const idxRef = useRef(0);
+
+  useEffect(() => {
+    setDisplayed('');
+    idxRef.current = 0;
+    if (!text) return;
+    const interval = setInterval(() => {
+      idxRef.current += 1;
+      if (idxRef.current >= text.length) {
+        setDisplayed(text);
+        clearInterval(interval);
+        onComplete?.();
+      } else {
+        setDisplayed(text.slice(0, idxRef.current));
+      }
+    }, speed);
+    return () => clearInterval(interval);
+  }, [text, speed]);
+
+  return <span style={style}>{displayed}<span style={{ opacity: 0.5, animation: 'blink 1s step-end infinite' }}>▌</span></span>;
+}
+
+// ─── OBJECT VISUAL ─────────────────────────────────────────────
+function ObjectVisual({ features, size = 100, glowing }) {
+  if (!features || features.length === 0) return <div style={{ width: size, height: size }} />;
+  const shapeIdx = Math.floor((features[0] || 0) * 5);
+  const scale = 0.5 + (features[1] || 0.5) * 1.0;
+  const r = Math.round((features[2] || 0.5) * 255);
+  const g = Math.round((features[3] || 0.5) * 255);
+  const b = Math.round((features[4] || 0.5) * 255);
+  const rotation = (features[7] || 0) * 360;
+  const shapeStyles = ['50%', '0%', '0%', '50%', '8px 8px 0% 0%'];
+  const borderRadius = shapeStyles[shapeIdx] || '50%';
+  const isTriangle = shapeIdx === 2;
+  const isDiamond = shapeIdx === 3;
+  const shapeSize = size * scale * 0.8;
+  const bgColor = `rgb(${r},${g},${b})`;
+
+  return (
+    <div style={{
+      width: size, height: size, display: 'flex', alignItems: 'center', justifyContent: 'center',
+      border: `2px solid ${glowing ? C.green : '#333'}`, borderRadius: 8,
+      background: 'rgba(10,10,30,0.8)', position: 'relative',
+      boxShadow: glowing ? `0 0 20px ${C.green}44, inset 0 0 10px ${C.green}22` : 'none',
+    }}>
+      <div style={{
+        width: shapeSize, height: shapeSize,
+        borderRadius: isTriangle ? '0%' : (isDiamond ? '0%' : borderRadius),
+        backgroundColor: isTriangle ? 'transparent' : bgColor,
+        border: isTriangle ? 'none' : '2px solid rgba(255,255,255,0.25)',
+        transform: `rotate(${isDiamond ? 45 : rotation}deg)`,
+        clipPath: isTriangle ? 'polygon(50% 0%, 0% 100%, 100% 100%)' : 'none',
+        ...(isTriangle ? { backgroundColor: bgColor } : {}),
+      }} />
+    </div>
+  );
+}
+
+// ─── PERSONALITY BADGE ─────────────────────────────────────────
+function PersonalityBadge({ label, color, traits }) {
+  return (
+    <motion.div
+      initial={{ scale: 0.8, opacity: 0 }}
+      animate={{ scale: 1, opacity: 1 }}
+      style={{
+        display: 'inline-flex', flexWrap: 'wrap', gap: 4, padding: '4px 10px',
+        background: `${color}0d`, border: `1px solid ${color}33`,
+        borderRadius: 6, fontSize: 10, fontFamily: "'JetBrains Mono', monospace",
+      }}
+    >
+      <span style={{ color, fontWeight: 'bold', marginRight: 4 }}>{label}</span>
+      {traits && Object.entries(traits).map(([key, val]) => (
+        <span key={key} style={{
+          padding: '1px 6px', borderRadius: 4,
+          background: `${C.cyan}18`,
+          color: C.cyan, border: `1px solid ${C.cyan}33`,
+        }}>
+          {key}
+        </span>
+      ))}
+    </motion.div>
+  );
+}
+
+// ─── SPINNER ───────────────────────────────────────────────────
+function Spinner({ color = C.green, size = 24 }) {
+  return (
+    <motion.div
+      animate={{ rotate: 360 }}
+      transition={{ repeat: Infinity, duration: 1, ease: 'linear' }}
+      style={{
+        width: size, height: size, border: `2px solid ${color}33`,
+        borderTop: `2px solid ${color}`, borderRadius: '50%',
+      }}
+    />
+  );
+}
+
+// ─── SUMMARY CARD ──────────────────────────────────────────────
+function SummaryCard({ label, value, color }) {
+  return (
+    <motion.div
+      initial={{ y: 20, opacity: 0 }}
+      animate={{ y: 0, opacity: 1 }}
+      style={{
+        padding: '16px 20px', borderRadius: 10,
+        background: `${color}0a`, border: `1px solid ${color}33`,
+      }}
+    >
+      <div style={{ fontSize: 26, fontWeight: 'bold', color, fontFamily: "'JetBrains Mono', monospace" }}>{value}</div>
+      <div style={{ fontSize: 9, color: '#888', letterSpacing: 1, marginTop: 4, textTransform: 'uppercase' }}>{label}</div>
+    </motion.div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
+// MAIN COMPONENT
+// ═══════════════════════════════════════════════════════════════
+export default function DemoMode() {
+  // ── Data fetching state ──
+  const [sessions, setSessions] = useState([]);
+  const [selectedSessionId, setSelectedSessionId] = useState('');
+  const [conversations, setConversations] = useState([]);
+  const [loadingSessions, setLoadingSessions] = useState(false);
+  const [loadingConversations, setLoadingConversations] = useState(false);
+  const [error, setError] = useState(null);
+
+  // ── Playback state ──
+  const [currentIdx, setCurrentIdx] = useState(0);
+  const [phase, setPhase] = useState('idle'); // idle | object | speaker | message | listener | result
+  const [playing, setPlaying] = useState(false);
+  const [speed, setSpeed] = useState(1);
+  const [autoAdvance, setAutoAdvance] = useState(true);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [showSummary, setShowSummary] = useState(false);
+  const [history, setHistory] = useState([]);
+  const [ttsEnabled, setTtsEnabled] = useState(true);
+  const scrollRef = useRef(null);
+  const timerRef = useRef(null);
+
+  // ── Fetch sessions ──
+  const fetchSessions = useCallback(async () => {
+    setLoadingSessions(true);
+    setError(null);
+    try {
+      const res = await fetch(`${API_URL}/sessions`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}: Failed to fetch sessions`);
+      const data = await res.json();
+      const list = data.sessions || data || [];
+      setSessions(list);
+      if (list.length > 0 && !selectedSessionId) {
+        setSelectedSessionId(list[0].session_id);
+      }
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoadingSessions(false);
+    }
+  }, [selectedSessionId]);
+
+  // ── Fetch conversations ──
+  const fetchConversations = useCallback(async (sessionId) => {
+    if (!sessionId) return;
+    setLoadingConversations(true);
+    setError(null);
+    try {
+      // Try the nested endpoint first, fall back to query param style
+      let res = await fetch(`${API_URL}/sessions/${sessionId}/conversations?limit=500`);
+      if (!res.ok) {
+        res = await fetch(`${API_URL}/conversations?session_id=${sessionId}&limit=500`);
+      }
+      if (!res.ok) throw new Error(`HTTP ${res.status}: Failed to fetch conversations`);
+      const data = await res.json();
+      const convos = data.data || data.conversations || data || [];
+      setConversations(convos);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoadingConversations(false);
+    }
+  }, []);
+
+  // ── Initial load ──
+  useEffect(() => { fetchSessions(); }, []);
+
+  // ── Load conversations when session selected ──
+  useEffect(() => {
+    if (selectedSessionId) {
+      fetchConversations(selectedSessionId);
+      reset();
+    }
+  }, [selectedSessionId]);
+
+  // ── Auto-scroll history ──
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [history, phase]);
+
+  const conv = conversations[currentIdx];
+  const totalConvos = conversations.length;
+
+  const phaseTimings = useMemo(() => ({
+    object: 2500 / speed, speaker: 4000 / speed,
+    message: 2000 / speed, listener: 4000 / speed, result: 3000 / speed,
+  }), [speed]);
+
+  // ── TTS ──
+  const speak = useCallback((text) => {
+    if (!ttsEnabled || !('speechSynthesis' in window) || !text) return;
+    window.speechSynthesis.cancel();
+    const utter = new SpeechSynthesisUtterance(text);
+    utter.rate = Math.min(speed, 1.5);
+    utter.pitch = 1;
+    const voices = window.speechSynthesis.getVoices();
+    const preferred = voices.find(v => v.name.includes('Google') && v.lang.startsWith('en'))
+      || voices.find(v => v.lang.startsWith('en'));
+    if (preferred) utter.voice = preferred;
+    window.speechSynthesis.speak(utter);
+  }, [speed, ttsEnabled]);
+
+  // ── Phase progression ──
+  useEffect(() => {
+    if (!playing || !autoAdvance || showSummary || !conv) return;
+    if (phase === 'idle') { setPhase('object'); return; }
+
+    const timing = phaseTimings[phase];
+    if (!timing) return;
+
+    timerRef.current = setTimeout(() => {
+      if (phase === 'object') {
+        setPhase('speaker');
+        const desc = generateSpeakerDescription(conv.target_features, currentIdx);
+        speak(`Speaker agent observes the target object. ${desc}`);
+      } else if (phase === 'speaker') {
+        setPhase('message');
+        const msgSymbols = Array.isArray(conv.message) ? conv.message.map(m => typeof m === 'number' ? `Symbol ${m}` : m) : [];
+        speak(`Sending message: ${msgSymbols.join(', ')}`);
+      } else if (phase === 'message') {
+        setPhase('listener');
+        const interp = generateListenerInterpretation(conv.candidates_features?.[conv.listener_choice], conv.target_features, conv.correct, currentIdx);
+        speak(`Listener interprets. ${interp}`);
+      } else if (phase === 'listener') {
+        setPhase('result');
+        speak(conv.correct ? 'Correct match! The listener identified the right object.' : 'Incorrect. The listener chose the wrong object.');
+      } else if (phase === 'result') {
+        setHistory(prev => [...prev, { ...conv, _episode: currentIdx + 1 }]);
+        if (currentIdx < totalConvos - 1) {
+          setCurrentIdx(prev => prev + 1);
+          setPhase('object');
+        } else {
+          setShowSummary(true);
+          setPlaying(false);
+        }
+      }
+    }, timing);
+
+    return () => clearTimeout(timerRef.current);
+  }, [playing, autoAdvance, phase, currentIdx, conv, totalConvos, phaseTimings, speak, showSummary]);
+
+  // ── Skip controls ──
+  const skipNext = useCallback(() => {
+    window.speechSynthesis?.cancel();
+    clearTimeout(timerRef.current);
+    if (currentIdx < totalConvos - 1) {
+      setHistory(prev => conv ? [...prev, { ...conv, _episode: currentIdx + 1 }] : prev);
+      setCurrentIdx(prev => prev + 1);
+      setPhase('object');
+    } else {
+      setShowSummary(true);
+      setPlaying(false);
+    }
+  }, [currentIdx, totalConvos, conv]);
+
+  const skipPrev = useCallback(() => {
+    window.speechSynthesis?.cancel();
+    clearTimeout(timerRef.current);
+    if (currentIdx > 0) {
+      setCurrentIdx(prev => prev - 1);
+      setPhase('object');
+    }
+  }, [currentIdx]);
+
+  // ── Fullscreen ──
+  const toggleFullscreen = useCallback(() => {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen?.().then(() => setIsFullscreen(true)).catch(() => {});
+    } else {
+      document.exitFullscreen?.().then(() => setIsFullscreen(false)).catch(() => {});
+    }
+  }, []);
+
+  // ── Fullscreen change listener ──
+  useEffect(() => {
+    const handler = () => setIsFullscreen(!!document.fullscreenElement);
+    document.addEventListener('fullscreenchange', handler);
+    return () => document.removeEventListener('fullscreenchange', handler);
+  }, []);
+
+  // ── Reset ──
+  const reset = useCallback(() => {
+    setCurrentIdx(0); setPhase('idle'); setPlaying(false);
+    setShowSummary(false); setHistory([]);
+    window.speechSynthesis?.cancel();
+    clearTimeout(timerRef.current);
+  }, []);
+
+  // ── Keyboard shortcuts ──
+  useEffect(() => {
+    const handler = (e) => {
+      if (e.key === ' ') { e.preventDefault(); setPlaying(p => !p); }
+      else if (e.key === 'ArrowRight') skipNext();
+      else if (e.key === 'ArrowLeft') skipPrev();
+      else if (e.key === 'f') toggleFullscreen();
+      else if (e.key === 'r') reset();
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [skipNext, skipPrev, toggleFullscreen, reset]);
+
+  // ── Stats ──
+  const totalCorrect = conversations.filter(c => c.correct).length;
+  const accuracy = totalConvos > 0 ? ((totalCorrect / totalConvos) * 100).toFixed(1) : '0';
+  const allSymbols = new Set(conversations.flatMap(c => Array.isArray(c.message) ? c.message : []));
+
+  // ── Derived display data ──
+  const targetName = conv ? featureToName(conv.target_features) : '';
+  const targetEmoji = conv ? featureToEmoji(conv.target_features) : '';
+  const chosenName = conv ? featureToName(conv.candidates_features?.[conv.listener_choice]) : '';
+  const speakerDesc = conv ? generateSpeakerDescription(conv.target_features, currentIdx) : '';
+  const listenerInterp = conv ? generateListenerInterpretation(
+    conv.candidates_features?.[conv.listener_choice], conv.target_features, conv.correct, currentIdx
+  ) : '';
+  const msgSymbols = conv && Array.isArray(conv.message) ? conv.message : [];
+
+  // ═══════════════════════════════════════════════════════════════
+  // RENDER
+  // ═══════════════════════════════════════════════════════════════
+  return (
+    <div style={{
+      width: '100%', minHeight: '100vh', background: C.bg,
+      fontFamily: "'JetBrains Mono', monospace", color: C.text,
+      display: 'flex', flexDirection: 'column', position: 'relative',
+    }}>
+      <CRTOverlay />
+      <style>{`@keyframes blink { 50% { opacity: 0; } }`}</style>
+
+      {/* ── TITLE BAR ────────────────────────────────────── */}
+      <motion.div
+        initial={{ y: -50, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        style={{
+          flex: '0 0 50px', background: C.panel,
+          borderBottom: `2px solid ${C.border}`, display: 'flex',
+          alignItems: 'center', justifyContent: 'space-between',
+          padding: '0 20px', zIndex: 10,
+        }}
+      >
+        <div style={{
+          fontSize: 16, color: C.green, fontWeight: 'bold',
+          textShadow: `0 0 8px ${C.green}66`, letterSpacing: 3,
+        }}>
+          🤖 DEMO MODE
+        </div>
+        <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+          {totalConvos > 0 && (
+            <>
+              <span style={{ fontSize: 11, color: C.cyan }}>
+                EP {currentIdx + 1}/{totalConvos}
+              </span>
+              <span style={{ fontSize: 11, color: playing ? C.green : C.muted }}>
+                {playing ? '● PLAYING' : '○ PAUSED'}
+              </span>
+            </>
+          )}
+        </div>
+      </motion.div>
+
+      {/* ── SESSION SELECTOR & CONTROLS ───────────────────── */}
+      <motion.div
+        initial={{ y: -30, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        transition={{ delay: 0.1 }}
+        style={{
+          flex: '0 0 auto', background: 'rgba(13,13,34,0.9)',
+          borderBottom: '1px solid #1a1a2e', display: 'flex',
+          flexWrap: 'wrap', alignItems: 'center', padding: '8px 20px', gap: 10, zIndex: 10,
+        }}
+      >
+        {/* Session selector */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span style={{ fontSize: 10, color: C.amber, letterSpacing: 1 }}>SESSION:</span>
+          {loadingSessions ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <Spinner size={14} color={C.amber} />
+              <span style={{ fontSize: 10, color: C.muted }}>Loading...</span>
+            </div>
+          ) : (
+            <select
+              value={selectedSessionId}
+              onChange={(e) => setSelectedSessionId(e.target.value)}
+              style={{
+                background: '#111', border: `1px solid ${C.amber}44`, color: C.text,
+                padding: '4px 8px', borderRadius: 4, fontSize: 11,
+                fontFamily: "'JetBrains Mono', monospace", outline: 'none',
+                cursor: 'pointer', minWidth: 180,
+              }}
+            >
+              {sessions.length === 0 && <option value="">No sessions found</option>}
+              {sessions.map(s => (
+                <option key={s.session_id} value={s.session_id}>
+                  {s.name || s.session_id.slice(0, 12)} ({s.status})
+                </option>
+              ))}
+            </select>
+          )}
+          <button onClick={fetchSessions} style={ctrlBtnStyle} title="Refresh sessions">↻</button>
+        </div>
+
+        <div style={{ width: 1, height: 24, background: '#333', margin: '0 4px' }} />
+
+        {/* Playback controls */}
+        <button
+          onClick={() => setPlaying(!playing)}
+          disabled={totalConvos === 0}
+          style={{
+            ...ctrlBtnStyle,
+            background: playing ? 'rgba(255,68,68,0.1)' : 'rgba(0,255,136,0.1)',
+            borderColor: playing ? C.red : C.green,
+            color: playing ? C.red : C.green,
+            opacity: totalConvos === 0 ? 0.3 : 1,
+          }}
+        >
+          {playing ? '⏸ Pause' : '▶ Play'}
+        </button>
+
+        <button onClick={skipPrev} disabled={currentIdx === 0 || totalConvos === 0} style={{ ...ctrlBtnStyle, opacity: currentIdx === 0 ? 0.3 : 1 }}>
+          ⏮ Prev
+        </button>
+        <button onClick={skipNext} disabled={totalConvos === 0} style={{ ...ctrlBtnStyle, opacity: totalConvos === 0 ? 0.3 : 1 }}>
+          ⏭ Next
+        </button>
+
+        <div style={{ width: 1, height: 24, background: '#333', margin: '0 4px' }} />
+
+        {/* Speed slider */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span style={{ fontSize: 10, color: C.muted }}>Speed:</span>
+          <input
+            type="range" min={0.5} max={2} step={0.25} value={speed}
+            onChange={(e) => setSpeed(parseFloat(e.target.value))}
+            style={{ width: 80, accentColor: C.green, cursor: 'pointer' }}
+          />
+          <span style={{ fontSize: 10, color: C.green, minWidth: 30 }}>{speed}x</span>
+        </div>
+
+        <div style={{ width: 1, height: 24, background: '#333', margin: '0 4px' }} />
+
+        {/* TTS toggle */}
+        <button onClick={() => setTtsEnabled(!ttsEnabled)} style={{
+          ...ctrlBtnStyle,
+          background: ttsEnabled ? 'rgba(0,221,255,0.1)' : 'transparent',
+          borderColor: ttsEnabled ? C.cyan : '#333',
+          color: ttsEnabled ? C.cyan : C.muted,
+        }}>
+          {ttsEnabled ? '🔊 TTS' : '🔇 Muted'}
+        </button>
+
+        {/* Auto-advance toggle */}
+        <button onClick={() => setAutoAdvance(!autoAdvance)} style={{
+          ...ctrlBtnStyle,
+          background: autoAdvance ? 'rgba(255,170,0,0.1)' : 'transparent',
+          borderColor: autoAdvance ? C.amber : '#333',
+          color: autoAdvance ? C.amber : C.muted,
+        }}>
+          {autoAdvance ? '⟳ Auto' : '⏸ Manual'}
+        </button>
+
+        {/* Fullscreen */}
+        <button onClick={toggleFullscreen} style={ctrlBtnStyle}>
+          {isFullscreen ? '⊡ Exit FS' : '⊞ Fullscreen'}
+        </button>
+
+        {/* Reset */}
+        <button onClick={reset} style={ctrlBtnStyle}>↺ Reset</button>
+      </motion.div>
+
+      {/* ── PROGRESS BAR ──────────────────────────────────── */}
+      {totalConvos > 0 && (
+        <div style={{
+          flex: '0 0 4px', background: '#111', position: 'relative', overflow: 'hidden',
+        }}>
+          <motion.div
+            animate={{ width: `${((currentIdx + (phase === 'result' ? 1 : 0)) / totalConvos) * 100}%` }}
+            transition={{ duration: 0.3 }}
+            style={{
+              height: '100%', background: `linear-gradient(90deg, ${C.green}, ${C.cyan})`,
+              boxShadow: `0 0 8px ${C.green}66`,
+            }}
+          />
+        </div>
+      )}
+
+      {/* ── ERROR STATE ───────────────────────────────────── */}
+      {error && (
+        <div style={{
+          flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
+          flexDirection: 'column', gap: 16,
+        }}>
+          <div style={{ fontSize: 40 }}>⚠️</div>
+          <div style={{ color: C.red, fontSize: 14 }}>Error: {error}</div>
+          <button onClick={() => { setError(null); fetchSessions(); }} style={{
+            ...ctrlBtnStyle, padding: '8px 20px', borderColor: C.green, color: C.green,
+          }}>
+            ↻ Retry
+          </button>
+        </div>
+      )}
+
+      {/* ── LOADING STATE ─────────────────────────────────── */}
+      {!error && loadingConversations && (
+        <div style={{
+          flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
+          flexDirection: 'column', gap: 16,
+        }}>
+          <Spinner size={40} />
+          <div style={{ color: C.muted, fontSize: 13, letterSpacing: 1 }}>Loading conversations...</div>
+        </div>
+      )}
+
+      {/* ── EMPTY STATE ───────────────────────────────────── */}
+      {!error && !loadingConversations && !loadingSessions && sessions.length === 0 && (
+        <div style={{
+          flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
+          flexDirection: 'column', gap: 16,
+        }}>
+          <div style={{ fontSize: 48 }}>🤖</div>
+          <div style={{ color: C.muted, fontSize: 14, letterSpacing: 1 }}>No sessions found</div>
+          <div style={{ color: '#555', fontSize: 11 }}>Create a training session first to demo its conversations.</div>
+          <button onClick={fetchSessions} style={{
+            ...ctrlBtnStyle, padding: '8px 20px', borderColor: C.green, color: C.green,
+          }}>
+            ↻ Refresh
+          </button>
+        </div>
+      )}
+
+      {/* ── NO CONVERSATIONS STATE ────────────────────────── */}
+      {!error && !loadingConversations && sessions.length > 0 && totalConvos === 0 && (
+        <div style={{
+          flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
+          flexDirection: 'column', gap: 16,
+        }}>
+          <div style={{ fontSize: 48 }}>📭</div>
+          <div style={{ color: C.muted, fontSize: 14, letterSpacing: 1 }}>No conversations recorded</div>
+          <div style={{ color: '#555', fontSize: 11 }}>This session has no conversations yet. Train the agents first.</div>
+        </div>
+      )}
+
+      {/* ── MAIN CONTENT ──────────────────────────────────── */}
+      {!error && !loadingConversations && totalConvos > 0 && !showSummary && (
+        <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
+          {/* ── Conversation Stage ──────────────────────────── */}
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+
+            {/* Stage Area */}
+            <div style={{
+              flex: '0 0 auto', minHeight: 280, display: 'flex', alignItems: 'center',
+              justifyContent: 'center', gap: 30, padding: '24px 20px',
+              background: `radial-gradient(ellipse at center, rgba(0,255,136,0.03) 0%, transparent 70%)`,
+              borderBottom: '1px solid #1a1a2e', position: 'relative', flexWrap: 'wrap',
+            }}>
+              {/* Speaker Side */}
+              <AnimatePresence mode="wait">
+                {phase !== 'idle' && conv && (
+                  <motion.div
+                    key={`speaker-${currentIdx}`}
+                    initial={{ x: -60, opacity: 0 }}
+                    animate={{ x: 0, opacity: 1 }}
+                    exit={{ x: -60, opacity: 0 }}
+                    transition={{ type: 'spring', damping: 20 }}
+                    style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, minWidth: 140 }}
+                  >
+                    <div style={{
+                      fontSize: 10, color: C.cyan, textTransform: 'uppercase',
+                      letterSpacing: 2, fontWeight: 'bold',
+                    }}>SPEAKER</div>
+                    <PersonalityBadge
+                      label="Speaker (analytical, curious)"
+                      color={C.cyan}
+                      traits={{ analytical: true, curious: true }}
+                    />
+                    <ObjectVisual
+                      features={conv.target_features}
+                      size={100}
+                      glowing={phase === 'object' || phase === 'speaker'}
+                    />
+                    <div style={{
+                      fontSize: 18, color: C.text, fontWeight: 'bold',
+                      textShadow: `0 0 8px ${C.green}44`,
+                    }}>
+                      {targetEmoji} {targetName}
+                    </div>
+                    <div style={{ fontSize: 9, color: C.muted }}>TARGET OBJECT</div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              {/* Message Arrow */}
+              <AnimatePresence>
+                {(phase === 'message' || phase === 'listener' || phase === 'result') && (
+                  <motion.div
+                    key={`msg-${currentIdx}`}
+                    initial={{ scale: 0, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    exit={{ scale: 0, opacity: 0 }}
+                    style={{
+                      display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8,
+                    }}
+                  >
+                    <div style={{ fontSize: 10, color: C.amber, letterSpacing: 2, fontWeight: 'bold' }}>MESSAGE</div>
+                    <div style={{
+                      display: 'flex', gap: 6, padding: '10px 20px',
+                      background: 'rgba(255,170,0,0.08)', border: `1px solid ${C.amber}33`,
+                      borderRadius: 8,
+                    }}>
+                      {msgSymbols.map((sym, i) => (
+                        <motion.span
+                          key={i}
+                          initial={{ y: -10, opacity: 0 }}
+                          animate={{ y: 0, opacity: 1 }}
+                          transition={{ delay: i * 0.1 }}
+                          style={{
+                            fontSize: 24, color: C.amber,
+                            textShadow: `0 0 8px ${C.amber}66`,
+                          }}
+                        >
+                          {typeof sym === 'number' ? `S${sym}` : sym}
+                        </motion.span>
+                      ))}
+                    </div>
+                    <motion.div
+                      animate={{ x: [0, 12, 0] }}
+                      transition={{ repeat: Infinity, duration: 1.5 }}
+                      style={{ fontSize: 24, color: C.green }}
+                    >
+                      →
+                    </motion.div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              {/* Listener Side */}
+              <AnimatePresence mode="wait">
+                {phase !== 'idle' && conv && (
+                  <motion.div
+                    key={`listener-${currentIdx}`}
+                    initial={{ x: 60, opacity: 0 }}
+                    animate={{ x: 0, opacity: 1 }}
+                    exit={{ x: 60, opacity: 0 }}
+                    transition={{ type: 'spring', damping: 20 }}
+                    style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, minWidth: 140 }}
+                  >
+                    <div style={{
+                      fontSize: 10, color: C.amber, textTransform: 'uppercase',
+                      letterSpacing: 2, fontWeight: 'bold',
+                    }}>LISTENER</div>
+                    <PersonalityBadge
+                      label="Listener (methodical, skeptical)"
+                      color={C.amber}
+                      traits={{ methodical: true, skeptical: true }}
+                    />
+                    <ObjectVisual
+                      features={conv.candidates_features?.[conv.listener_choice]}
+                      size={100}
+                      glowing={phase === 'result' && conv.correct}
+                    />
+                    <div style={{
+                      fontSize: 18, color: conv.correct ? C.green : C.red,
+                      fontWeight: 'bold',
+                      textShadow: `0 0 8px ${conv.correct ? C.green : C.red}44`,
+                    }}>
+                      {conv.correct ? '✓' : '✗'} {chosenName}
+                    </div>
+                    <div style={{ fontSize: 9, color: C.muted }}>CHOSEN OBJECT</div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              {/* Idle state */}
+              {phase === 'idle' && (
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  style={{
+                    fontSize: 14, color: C.muted, textAlign: 'center',
+                    display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12,
+                  }}
+                >
+                  <div style={{ fontSize: 40 }}>🤖</div>
+                  <div>Press <span style={{ color: C.green }}>Play</span> to begin the demo</div>
+                  <div style={{ fontSize: 10, color: '#555' }}>
+                    {totalConvos} conversations to replay
+                  </div>
+                  <div style={{ fontSize: 9, color: '#444', marginTop: 8 }}>
+                    Space = Play/Pause · ← → = Skip · F = Fullscreen · R = Reset
+                  </div>
+                </motion.div>
+              )}
+
+              {/* Result Badge */}
+              <AnimatePresence>
+                {phase === 'result' && (
+                  <motion.div
+                    key={`result-${currentIdx}`}
+                    initial={{ scale: 0 }}
+                    animate={{ scale: 1 }}
+                    exit={{ scale: 0 }}
+                    transition={{ type: 'spring', damping: 12 }}
+                    style={{
+                      position: 'absolute', top: 16, right: 16,
+                      padding: '10px 24px', borderRadius: 8,
+                      background: conv.correct ? 'rgba(0,255,136,0.15)' : 'rgba(255,68,68,0.15)',
+                      border: `2px solid ${conv.correct ? C.green : C.red}`,
+                      fontSize: 18, fontWeight: 'bold',
+                      color: conv.correct ? C.green : C.red,
+                      textShadow: `0 0 10px ${conv.correct ? C.green : C.red}66`,
+                    }}
+                  >
+                    {conv.correct ? '✓ CORRECT' : '✗ WRONG'}
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+
+            {/* ── Agent Thoughts Panel ──────────────────────── */}
+            <div style={{
+              flex: 1, padding: '16px 20px',
+              background: 'rgba(13,13,34,0.6)',
+              borderBottom: '1px solid #1a1a2e',
+              display: 'flex', gap: 16, overflow: 'auto',
+            }}>
+              <AnimatePresence>
+                {(phase === 'speaker' || phase === 'message' || phase === 'listener' || phase === 'result') && (
+                  <motion.div
+                    key={`speaker-thought-${currentIdx}`}
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    style={{
+                      flex: 1, padding: '12px 16px', borderRadius: 8,
+                      background: 'rgba(0,221,255,0.06)',
+                      borderLeft: `3px solid ${C.cyan}66`,
+                      fontSize: 12, color: C.text, lineHeight: 1.6,
+                    }}
+                  >
+                    <div style={{ fontSize: 9, color: C.cyan, letterSpacing: 1, marginBottom: 6, textTransform: 'uppercase' }}>
+                      💭 Speaker Description
+                    </div>
+                    <TypewriterText
+                      text={speakerDesc}
+                      speed={20 + (1 / speed) * 20}
+                      style={{ color: C.text }}
+                    />
+                  </motion.div>
+                )}
+              </AnimatePresence>
+              <AnimatePresence>
+                {(phase === 'listener' || phase === 'result') && (
+                  <motion.div
+                    key={`listener-thought-${currentIdx}`}
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    style={{
+                      flex: 1, padding: '12px 16px', borderRadius: 8,
+                      background: 'rgba(255,170,0,0.06)',
+                      borderLeft: `3px solid ${C.amber}66`,
+                      fontSize: 12, color: C.text, lineHeight: 1.6,
+                    }}
+                  >
+                    <div style={{ fontSize: 9, color: C.amber, letterSpacing: 1, marginBottom: 6, textTransform: 'uppercase' }}>
+                      🔄 Listener Interpretation
+                    </div>
+                    <TypewriterText
+                      text={listenerInterp}
+                      speed={20 + (1 / speed) * 20}
+                      style={{ color: C.text }}
+                    />
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+          </div>
+
+          {/* ── History Sidebar ─────────────────────────────── */}
+          <div style={{
+            width: 260, background: C.panel,
+            borderLeft: `1px solid ${C.border}33`,
+            display: 'flex', flexDirection: 'column', overflow: 'hidden',
+          }}>
+            <div style={{
+              padding: '10px 12px', borderBottom: `1px solid ${C.border}33`,
+              fontSize: 10, color: C.amber, letterSpacing: 2, fontWeight: 'bold',
+            }}>
+              ▶ HISTORY ({history.length})
+            </div>
+            <div ref={scrollRef} style={{ flex: 1, overflowY: 'auto', padding: 8 }}>
+              {history.map((h, i) => (
+                <motion.div
+                  key={i}
+                  initial={{ opacity: 0, x: 20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  style={{
+                    padding: '8px 10px', marginBottom: 6, borderRadius: 6,
+                    background: h.correct ? 'rgba(0,255,136,0.05)' : 'rgba(255,68,68,0.05)',
+                    borderLeft: `3px solid ${h.correct ? C.green : C.red}`,
+                    fontSize: 10,
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                    <span style={{ color: C.cyan }}>EP {h._episode || i + 1}</span>
+                    <span style={{ color: h.correct ? C.green : C.red }}>
+                      {h.correct ? '✓' : '✗'}
+                    </span>
+                  </div>
+                  <div style={{ display: 'flex', gap: 2, marginBottom: 4 }}>
+                    {(Array.isArray(h.message) ? h.message : []).map((s, si) => (
+                      <span key={si} style={{ color: C.amber, fontSize: 12 }}>
+                        {typeof s === 'number' ? `S${s}` : s}
+                      </span>
+                    ))}
+                  </div>
+                  <div style={{ color: '#555', fontSize: 9 }}>
+                    {featureToName(h.target_features)} → {featureToName(h.candidates_features?.[h.listener_choice])}
+                  </div>
+                </motion.div>
+              ))}
+              {history.length === 0 && (
+                <div style={{ color: '#444', fontSize: 10, textAlign: 'center', padding: 20 }}>
+                  Conversations will appear here...
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── END SCREEN / SUMMARY ─────────────────────────── */}
+      <AnimatePresence>
+        {showSummary && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            style={{
+              position: 'fixed', inset: 0, zIndex: 1000,
+              background: 'rgba(10,10,26,0.95)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              backdropFilter: 'blur(8px)',
+            }}
+          >
+            <motion.div
+              initial={{ scale: 0.8, y: 30 }}
+              animate={{ scale: 1, y: 0 }}
+              transition={{ type: 'spring', damping: 15 }}
+              className="retro-card"
+              style={{
+                background: C.panel, border: `2px solid ${C.green}`,
+                borderRadius: 16, padding: '40px 60px', textAlign: 'center',
+                maxWidth: 520, boxShadow: `0 0 40px ${C.green}22`,
+              }}
+            >
+              <div style={{ fontSize: 48, marginBottom: 16 }}>🎉</div>
+              <h2 style={{
+                fontSize: 22, color: C.green, marginBottom: 8,
+                textShadow: `0 0 12px ${C.green}66`, letterSpacing: 3,
+                fontFamily: "'JetBrains Mono', monospace",
+              }} className="section-header">
+                DEMO COMPLETE
+              </h2>
+              <p style={{ color: C.muted, fontSize: 12, marginBottom: 24, letterSpacing: 1 }}>
+                Training Session Summary
+              </p>
+              <div style={{
+                display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16, marginBottom: 20,
+              }}>
+                <SummaryCard label="Conversations" value={totalConvos} color={C.cyan} />
+                <SummaryCard label="Accuracy" value={`${accuracy}%`} color={C.green} />
+                <SummaryCard label="Unique Symbols" value={allSymbols.size} color={C.amber} />
+              </div>
+              <div style={{
+                display: 'flex', gap: 16, justifyContent: 'center', marginBottom: 24,
+              }}>
+                <SummaryCard label="Correct" value={totalCorrect} color={C.green} />
+                <SummaryCard label="Wrong" value={totalConvos - totalCorrect} color={C.red} />
+              </div>
+              {allSymbols.size > 0 && (
+                <div style={{
+                  padding: '10px 16px', borderRadius: 8,
+                  background: 'rgba(0,221,255,0.06)', border: `1px solid ${C.cyan}33`,
+                  fontSize: 11, color: C.text, marginBottom: 24, lineHeight: 1.6,
+                }}>
+                  <div style={{ color: C.cyan, fontWeight: 'bold', marginBottom: 4, letterSpacing: 1 }}>
+                    LEARNED SYMBOLS:
+                  </div>
+                  <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', justifyContent: 'center' }}>
+                    {[...allSymbols].map((s, i) => (
+                      <span key={i} style={{
+                        padding: '2px 8px', borderRadius: 4,
+                        background: 'rgba(255,170,0,0.1)', color: C.amber,
+                        border: `1px solid ${C.amber}33`,
+                      }}>
+                        {typeof s === 'number' ? `S${s}` : s}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+              <div style={{ display: 'flex', gap: 12, justifyContent: 'center' }}>
+                <button
+                  onClick={reset}
+                  style={{
+                    padding: '10px 28px', borderRadius: 8,
+                    background: 'rgba(0,255,136,0.1)',
+                    border: `1px solid ${C.green}66`,
+                    color: C.green, fontSize: 13, fontWeight: 'bold',
+                    cursor: 'pointer', letterSpacing: 2,
+                    fontFamily: "'JetBrains Mono', monospace",
+                  }}
+                >
+                  ▶ REPLAY DEMO
+                </button>
+                <button
+                  onClick={() => { setShowSummary(false); }}
+                  style={{
+                    padding: '10px 28px', borderRadius: 8,
+                    background: 'transparent',
+                    border: `1px solid ${C.muted}66`,
+                    color: C.muted, fontSize: 13,
+                    cursor: 'pointer', letterSpacing: 1,
+                    fontFamily: "'JetBrains Mono', monospace",
+                  }}
+                >
+                  VIEW HISTORY
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+// ─── Styles ────────────────────────────────────────────────────
+const ctrlBtnStyle = {
+  padding: '5px 12px', borderRadius: 6,
+  background: 'transparent', border: '1px solid #333',
+  color: '#888', fontSize: 11, cursor: 'pointer',
+  fontFamily: "'JetBrains Mono', monospace",
+  transition: 'all 0.2s', letterSpacing: 0.5,
+};

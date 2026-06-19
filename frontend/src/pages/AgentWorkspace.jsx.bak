@@ -1,0 +1,1020 @@
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+
+// ─── COLOR CONSTANTS ───────────────────────────────────────────
+const COLORS = {
+  bg: '#0a0a1a',
+  floor1: '#1a1a2e',
+  floor2: '#16162a',
+  border: '#00ff88',
+  textPrimary: '#00ff88',
+  textSecondary: '#ffaa00',
+  textAccent: '#00ddff',
+  hpGreen: '#44ff44',
+  hpYellow: '#ffcc00',
+  hpRed: '#ff4444',
+  panelBg: '#0d0d22',
+  panelBorder: '#00ff8844',
+};
+
+// ─── PIXEL ART: box-shadow renderer ───────────────────────────
+// Each sprite is a 24-row × 16-col grid of single-char codes.
+// '.' = transparent.  Each class has its own palette.
+// Uppercase = highlight, lowercase = base, digits/special = shadow.
+
+const B = '#222222'; // outline
+
+function gridToShadows(grid, palette, px) {
+  const out = [];
+  for (let y = 0; y < grid.length; y++) {
+    const row = grid[y];
+    for (let x = 0; x < row.length; x++) {
+      const ch = row[x];
+      if (ch === '.' || ch === ' ') continue;
+      const c = palette[ch];
+      if (c) out.push(`${x * px}px ${y * px}px 0 0 ${c}`);
+    }
+  }
+  return out.join(',');
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 1. OBSERVER MAGE  (blue robes, wizard hat, glowing staff)
+// ═══════════════════════════════════════════════════════════════
+const MAGE_P = {
+  O: B,
+  A: '#4477cc', a: '#3355aa', z: '#223388',   // hat
+  S: '#ffe0b0', s: '#eebb88', v: '#cc9966',   // skin
+  W: '#ffffff', e: '#224488',                   // eye white / pupil
+  m: '#cc6666',                                 // mouth
+  R: '#4466cc', r: '#3355aa', q: '#224488',    // robe
+  G: '#66eeff', g: '#44bbdd',                   // staff glow
+  T: '#554433', t: '#443322',                   // staff wood
+  f: '#2244aa',                                 // feet
+};
+const MAGE_G = [
+  '.....OOOOO.......',
+  '....OAAAaO.......',
+  '...OAAAAazO......',
+  '...OaaaaazO......',
+  '..OaaaaaazO......',
+  '..OOOOOOOOOO.....',
+  '..OSWSSSWSO......',
+  '.OSsSssSeeSO.....',
+  '.OssssssSEO......',
+  '.OsvOssvOO.......',
+  '..OOsOOsOO.......',
+  '...OsmO..........',
+  '...OOO...........',
+  '..ORRRO..........',
+  '.ORRrRROT........',
+  '.ORRrrROTG.......',
+  '.ORqqRRROTG......',
+  '..ORRrRO.TGg.....',
+  '..ORrrRO..Gg.....',
+  '...ORRO..........',
+  '...OfO...........',
+  '..OfOfO..........',
+  '..OOOOO..........',
+  '.................',
+];
+
+// ═══════════════════════════════════════════════════════════════
+// 2. WORKER KNIGHT  (crimson plate armor, sword, shield)
+// ═══════════════════════════════════════════════════════════════
+const KNIGHT_P = {
+  O: B,
+  A: '#cc4444', a: '#aa2222', z: '#881111',   // helmet
+  V: '#ff6666', v: '#cc3333',                   // visor
+  S: '#ffe0b0', s: '#eebb88', v2: '#cc9966',  // skin (v2 maps to 'u' below)
+  W: '#ffffff', e: '#222222',
+  m: '#cc6666',
+  M: '#cccccc', m2: '#999999', n: '#666666',  // metal
+  R: '#bb3333', r: '#992222', q: '#771111',   // armor
+  X: '#eeeeee', x: '#bbbbbb',                   // sword blade
+  D: '#884422',                                 // sword handle
+  F: '#dddd44', f2: '#bbaa22',                  // shield
+  b: '#992222',                                 // boots
+};
+const KNIGHT_G = [
+  '....OOOOOO.......',
+  '...OAAAAaO.......',
+  '..OAAAVVazO......',
+  '..OaaVVVzO.......',
+  '.OaaaaaaazO......',
+  '.OOOOOOOOO.......',
+  '.OWSSSWSEO.......',
+  'OSsSssSeeSO......',
+  'OssssssSEO.......',
+  'OsvOssvOO........',
+  '.OOsOOsOO........',
+  '..OsmO...........',
+  '..OOOOO..........',
+  '.OMRMRO..........',
+  'OMRrRROM.........',
+  'OMRqrRMOXx.......',
+  '.MRqqRMODXx......',
+  '.OMRRO...Xx......',
+  '.OMbbMO..........',
+  '..ObbO...........',
+  '..ObO............',
+  '.ObObO...........',
+  '.OOOOO...........',
+  '.................',
+];
+
+// ═══════════════════════════════════════════════════════════════
+// 3. SCHOLAR SAGE  (purple robe, book, glasses)
+// ═══════════════════════════════════════════════════════════════
+const SAGE_P = {
+  O: B,
+  A: '#9966cc', a: '#7744aa', z: '#553388',   // hat
+  S: '#ffe0b0', s: '#eebb88', v: '#cc9966',
+  W: '#ffffff', e: '#222244',
+  G: '#cccc44', g: '#aaaa22',                   // glasses
+  m: '#cc6666',
+  R: '#8855cc', r: '#7744aa', q: '#553388',   // robe
+  K: '#885522', k: '#663311',                   // book cover
+  P: '#ffffcc', p: '#ddddaa',                   // pages
+  f: '#553388',
+};
+const SAGE_G = [
+  '.....OOOO.......',
+  '....OAAAaO......',
+  '...OAAAAazO.....',
+  '...OaaaaazO.....',
+  '..OaaaaaazO.....',
+  '..OOOOOOOOO.....',
+  '..OWSSSGSSO.....',
+  '.OSsSssGgeSO....',
+  '.OssssssGSO.....',
+  '.OsvOssvOO......',
+  '..OOsOOsOO......',
+  '...OsmO.........',
+  '...OOO..........',
+  '..ORRRO.........',
+  '.ORRrRRO........',
+  '.ORRrrROKP......',
+  '.ORqqRrOPP......',
+  '..ORRrROKP......',
+  '..ORrrRO.O......',
+  '...ORRO.........',
+  '...OfO..........',
+  '..OfOfO.........',
+  '..OOOOO.........',
+  '................',
+];
+
+// ═══════════════════════════════════════════════════════════════
+// 4. SCOUT RANGER  (green hood, bow, light armor)
+// ═══════════════════════════════════════════════════════════════
+const RANGER_P = {
+  O: B,
+  A: '#449944', a: '#337733', z: '#225522',   // hood
+  S: '#ffe0b0', s: '#eebb88', v: '#cc9966',
+  W: '#ffffff', e: '#222222',
+  m: '#cc6666',
+  R: '#448844', r: '#337733', q: '#225522',   // armor/leather
+  C: '#559955', c: '#337733',                   // cape
+  B: '#885533', b: '#664422',                   // bow
+  L: '#cccccc',                                 // bowstring
+  f: '#335533',
+};
+const RANGER_G = [
+  '....OOOOOO.......',
+  '...OAAAAaO.......',
+  '..OAAAAAazO......',
+  '.OAaaaaaaO.......',
+  '.OaaaaaaaO.......',
+  '.OOOOOOOOO.......',
+  '.OWSSSWSEO.......',
+  'OSsSssSeeSO......',
+  'OssssssSEO.......',
+  'OsvOssvOO........',
+  '.OOsOOsOO........',
+  '..OsmO...........',
+  '..OOO............',
+  '.OCRCO.B.........',
+  'OCccCcOBL........',
+  'OCcqccO.BL.......',
+  '.OCqqCO..BL......',
+  '.OCccCO...O......',
+  '.OCbbCO..........',
+  '..ObbO...........',
+  '..ObO............',
+  '.ObObO...........',
+  '.OOOOO...........',
+  '.................',
+];
+
+// ═══════════════════════════════════════════════════════════════
+// 5. HEALER CLERIC  (white robe, gold cross, gentle)
+// ═══════════════════════════════════════════════════════════════
+const CLERIC_P = {
+  O: B,
+  H: '#ffffff', h: '#dddddd', d: '#bbbbbb',   // hood
+  S: '#ffe0b0', s: '#eebb88', v: '#cc9966',
+  W: '#ffffff', e: '#446688',
+  m: '#ee8888',
+  R: '#ffffff', r: '#eeeeee', q: '#dddddd',   // robe
+  C: '#ffcc00', c: '#ddaa00',                   // cross
+  G: '#ffee66', g: '#ddcc44',                   // gold trim
+  f: '#cccccc',
+};
+const CLERIC_G = [
+  '....OOOOO.......',
+  '...OHHHHhO......',
+  '..OHHHHHdO......',
+  '..OhhhhhhdO.....',
+  '.OhhhhhhhdO.....',
+  '.OOOOOOOOO......',
+  '.OWSSSWSEO......',
+  'OSsSssSeeSO.....',
+  'OssssssSEO......',
+  'OsvOssvOO.......',
+  '.OOsOOsOO.......',
+  '..OsmO..........',
+  '..OOO...........',
+  '.ORRRO..........',
+  'ORRrRRO.........',
+  'ORCrCrRO........',
+  'ORrCCCRO........',
+  '.ORCrCrO........',
+  '.ORRrRO.........',
+  '..OgRgO.........',
+  '..OfO...........',
+  '.OfOfO..........',
+  '.OOOOO..........',
+  '................',
+];
+
+// ═══════════════════════════════════════════════════════════════
+// 6. ROGUE ASSASSIN  (dark cloak, daggers, stealthy)
+// ═══════════════════════════════════════════════════════════════
+const ASSASSIN_P = {
+  O: B,
+  A: '#444444', a: '#333333', z: '#222222',   // hood
+  S: '#ffe0b0', s: '#eebb88', v: '#cc9966',
+  W: '#ffffff', e: '#cc2222',                   // red eyes
+  m: '#884444',
+  C: '#555555', c: '#333333', q: '#222222',   // cloak
+  D: '#aabbcc', d: '#889999',                   // dagger blade
+  G: '#884422', g: '#663311',                   // dagger grip
+  f: '#333333',
+};
+const ASSASSIN_G = [
+  '....OOOOO.......',
+  '...OAAAAaO......',
+  '..OAAAAAazO.....',
+  '.OAAaaaaaO......',
+  '.OaaaaaaaO......',
+  '.OOOOOOOOO......',
+  '.OWSSSWSeO......',
+  'OSsSssSeeSO.....',
+  'OssssssWeO......',
+  'OsvOssvOO.......',
+  '.OOsOOsOO.......',
+  '..OsmO..........',
+  '..OOO...........',
+  '.OCRCOD.........',
+  'OCccCcODG.......',
+  'OCcqqcO.DG......',
+  '.OCqqCO..D......',
+  '.OCccCO.........',
+  '.OCccCO.........',
+  '..OcqO..........',
+  '..OfO...........',
+  '.OfOfO..........',
+  '.OOOOO..........',
+  '................',
+];
+
+// ═══════════════════════════════════════════════════════════════
+// 7. ARTIFICER ENGINEER  (orange/bronze, goggles, wrench)
+// ═══════════════════════════════════════════════════════════════
+const ENGINEER_P = {
+  O: B,
+  A: '#dd8833', a: '#bb6622', z: '#994411',   // hat
+  S: '#ffe0b0', s: '#eebb88', v: '#cc9966',
+  W: '#ffffff', e: '#222222',
+  G: '#aaddff', g: '#88bbdd',                   // goggles
+  m: '#cc6666',
+  R: '#cc7722', r: '#aa5511', q: '#883300',   // apron
+  K: '#cccccc', k: '#999999',                   // wrench
+  M: '#888888', m2: '#666666',                  // mechanical bits
+  f: '#994411',
+};
+const ENGINEER_G = [
+  '...OOOOOOO......',
+  '..OAAAAAaO......',
+  '.OAAAAAAazO.....',
+  '.OaaaaaaazO.....',
+  '.OOOOOOOOO......',
+  '.OWSGSGGSO......',
+  'OSsSgssGgSO.....',
+  'OssssssSEO......',
+  'OsvOssvOO.......',
+  '.OOsOOsOO.......',
+  '..OsmO..........',
+  '..OOO...........',
+  '.ORRRO..........',
+  'ORRrRRO.........',
+  'ORRrrROKk.......',
+  'ORqqRrOKk.......',
+  '.ORRrRO.........',
+  '.ORrrRO.........',
+  '..OqRO..........',
+  '..OfO...........',
+  '.OfOfO..........',
+  '.OOOOO..........',
+  '................',
+  '................',
+];
+
+// ═══════════════════════════════════════════════════════════════
+// 8. MYSTIC ORACLE  (cyan/teal, flowing hair, crystal ball)
+// ═══════════════════════════════════════════════════════════════
+const ORACLE_P = {
+  O: B,
+  A: '#22cccc', a: '#009999', z: '#007777',   // hair
+  S: '#ffe0b0', s: '#eebb88', v: '#cc9966',
+  W: '#ffffff', I: '#44ddff', e: '#222222',   // glowing eyes
+  m: '#cc6666',
+  R: '#33cccc', r: '#22aaaa', q: '#118888',   // robe
+  C: '#66ffff', c: '#44dddd', k: '#22bbbb',   // crystal
+  F: '#ffffff',                                 // sparkle
+  L: '#22dddd',                                 // flowing hair
+  f: '#007777',
+};
+const ORACLE_G = [
+  '...OAAAAaO.......',
+  '..OAAAAAazO......',
+  '.OAAAAAAAaLO.....',
+  '.OaaaaaaLO.......',
+  '.OOOOOOOLO.......',
+  '.OWSSWSILO.......',
+  'OSsSssSILO.......',
+  'OssssssWLO.......',
+  'OsvOssvOO........',
+  '.OOsOOsOO........',
+  '..OsmO...........',
+  '..OOO............',
+  '..ORRRO..........',
+  '.ORRrRRO.........',
+  '.ORrrrROCC.......',
+  '.ORqqRrOCcF......',
+  '..ORRrROCc.......',
+  '..ORrrRO.........',
+  '...OqRO..........',
+  '...OfO...........',
+  '..OfOfO..........',
+  '..OOOOO..........',
+  '.................',
+  '.................',
+];
+
+// ── SPRITE REGISTRY ───────────────────────────────────────────
+const SPRITES = {
+  mage:      { grid: MAGE_G,      palette: MAGE_P },
+  knight:    { grid: KNIGHT_G,    palette: KNIGHT_P },
+  sage:      { grid: SAGE_G,      palette: SAGE_P },
+  ranger:    { grid: RANGER_G,    palette: RANGER_P },
+  cleric:    { grid: CLERIC_G,    palette: CLERIC_P },
+  assassin:  { grid: ASSASSIN_G,  palette: ASSASSIN_P },
+  engineer:  { grid: ENGINEER_G,  palette: ENGINEER_P },
+  oracle:    { grid: ORACLE_G,    palette: ORACLE_P },
+};
+
+// ── AGENT DEFINITIONS ─────────────────────────────────────────
+const AGENT_DEFS = [
+  { id:'mage',     name:'Observer',   className:'Observer Mage',        classType:'mage',     color:'#3355aa',
+    desc:'Analyzes data streams with arcane precision.' },
+  { id:'knight',   name:'Worker',     className:'Worker Knight',        classType:'knight',   color:'#aa2222',
+    desc:'Tackles tasks with unwavering strength.' },
+  { id:'sage',     name:'Scholar',    className:'Scholar Sage',         classType:'sage',     color:'#7744aa',
+    desc:'Studies patterns and uncovers deep insights.' },
+  { id:'ranger',   name:'Scout',      className:'Scout Ranger',        classType:'ranger',   color:'#337733',
+    desc:'Scouts new territory and tracks changes.' },
+  { id:'cleric',   name:'Healer',     className:'Healer Cleric',       classType:'cleric',   color:'#ddaa00',
+    desc:'Maintains system health and stability.' },
+  { id:'assassin', name:'Rogue',      className:'Rogue Assassin',      classType:'assassin', color:'#444444',
+    desc:'Stealthily monitors for anomalies.' },
+  { id:'engineer', name:'Artificer',  className:'Artificer Engineer',  classType:'engineer', color:'#bb6622',
+    desc:'Builds and maintains mechanical systems.' },
+  { id:'oracle',   name:'Mystic',     className:'Mystic Oracle',       classType:'oracle',   color:'#009999',
+    desc:'Foresees issues through mystical insight.' },
+];
+
+const ACTIONS = ['Scan Files', 'Check System', 'Monitor Processes', 'Observe Desktop'];
+
+// ═══════════════════════════════════════════════════════════════
+// COMPONENTS
+// ═══════════════════════════════════════════════════════════════
+
+// ── Pixel Sprite (single div + box-shadow) ────────────────────
+function PixelSprite({ spriteKey, frame = 0, action = 'idle', direction = 1, scale = 3 }) {
+  const sprite = SPRITES[spriteKey];
+  if (!sprite) return null;
+  const px = scale;
+  const shadowStr = useMemo(
+    () => gridToShadows(sprite.grid, sprite.palette, px),
+    [spriteKey, px]
+  );
+  let offY = 0;
+  if (action === 'idle' || action === 'walking' || action === 'working') {
+    offY = frame % 2 === 0 ? 0 : -1;
+  }
+  return (
+    <div style={{
+      position: 'relative',
+      width: 16 * px,
+      height: 24 * px,
+      transform: `scaleX(${direction}) translateY(${offY}px)`,
+      imageRendering: 'pixelated',
+    }}>
+      <div style={{ width: px, height: px, boxShadow: shadowStr, imageRendering: 'pixelated' }} />
+    </div>
+  );
+}
+
+// ── Animated Sprite with effects ──────────────────────────────
+function AnimatedSprite({ spriteKey, frame, action, direction, scale = 3 }) {
+  const sprite = SPRITES[spriteKey];
+  if (!sprite) return null;
+  const px = scale;
+  const shadowStr = useMemo(
+    () => gridToShadows(sprite.grid, sprite.palette, px),
+    [spriteKey, px]
+  );
+  let offY = 0;
+  if (action === 'idle') offY = frame % 2 === 0 ? 0 : -1;
+  else if (action === 'walking') offY = frame % 2 === 0 ? 0 : -1;
+  else if (action === 'working') offY = frame % 2 === 0 ? 0 : -1;
+  else if (action === 'thinking') offY = -1;
+
+  return (
+    <div style={{
+      position: 'relative',
+      width: 16 * px,
+      height: 24 * px,
+      transform: `scaleX(${direction}) translateY(${offY}px)`,
+      imageRendering: 'pixelated',
+    }}>
+      <div style={{ width: px, height: px, boxShadow: shadowStr, imageRendering: 'pixelated' }} />
+      {action === 'working' && <WorkVfx spriteKey={spriteKey} px={px} frame={frame} />}
+      {action === 'thinking' && <ThoughtBubble px={px} />}
+    </div>
+  );
+}
+
+// ── Work effects per class ────────────────────────────────────
+function WorkVfx({ spriteKey, px, frame }) {
+  const f = frame % 6;
+  switch (spriteKey) {
+    case 'mage':
+    case 'oracle':
+      return (
+        <>
+          {[[-4,-6],[14,-8],[18,-2],[-2,4]].map(([ox,oy], i) => (
+            <div key={i} style={{
+              position: 'absolute',
+              left: (ox + ((f + i) % 2)) * px / 3,
+              top: (oy + ((f + i) % 3 === 0 ? -1 : 0)) * px / 3,
+              width: px, height: px,
+              backgroundColor: spriteKey === 'oracle' ? '#66ffff' : '#66ddff',
+              opacity: (f + i) % 3 === 0 ? 1 : 0.4,
+              boxShadow: `0 0 ${px * 2}px ${spriteKey === 'oracle' ? '#66ffff' : '#66ddff'}`,
+            }} />
+          ))}
+        </>
+      );
+    case 'knight':
+      return (
+        <div style={{
+          position: 'absolute', right: -px * 5, top: px * 6 + (f < 3 ? 0 : px * 2),
+          width: px * 2, height: px * 5,
+          backgroundColor: '#ccc', border: '1px solid #222',
+          transform: `rotate(${f % 2 === 0 ? -20 : 20}deg)`,
+        }} />
+      );
+    case 'sage':
+    case 'cleric':
+      return (
+        <div style={{
+          position: 'absolute', right: -px * 6, top: px * 8,
+          width: px * 4, height: px * 5,
+          backgroundColor: spriteKey === 'cleric' ? '#ffcc00' : '#885522',
+          border: '1px solid #222', opacity: f % 3 === 0 ? 1 : 0.7,
+        }}>
+          <div style={{ width: '60%', height: '60%', margin: '18% auto', backgroundColor: '#ffffcc' }} />
+        </div>
+      );
+    case 'ranger':
+      return (
+        <div style={{
+          position: 'absolute', right: -px * 7, top: px * 4,
+          width: px, height: px, backgroundColor: '#44ff44',
+          boxShadow: `0 0 ${px*3}px #44ff44, ${px}px ${px}px 0 0 #44ff44, ${-px}px ${px}px 0 0 #44ff44`,
+          opacity: f % 2 === 0 ? 1 : 0.5,
+        }} />
+      );
+    case 'assassin':
+      return (
+        <div style={{
+          position: 'absolute', left: 0, top: 0,
+          width: 16 * px, height: 24 * px,
+          backgroundColor: 'rgba(0,0,0,0.35)',
+          opacity: f % 3 === 0 ? 0.5 : 0.15,
+        }} />
+      );
+    case 'engineer':
+      return (
+        <div style={{
+          position: 'absolute', right: -px * 5, top: px * 6,
+          width: px * 2, height: px * 5,
+          backgroundColor: '#999', border: '1px solid #222',
+          transform: `rotate(${f * 15}deg)`, transformOrigin: 'bottom center',
+        }} />
+      );
+    default:
+      return null;
+  }
+}
+
+// ── Thought bubble ────────────────────────────────────────────
+function ThoughtBubble({ px }) {
+  return (
+    <div style={{ position: 'absolute', top: -px * 7, left: px * 8 }}>
+      <div style={{
+        width: px * 7, height: px * 4,
+        backgroundColor: '#fff', border: '1px solid #222',
+        borderRadius: px * 2, display: 'flex',
+        alignItems: 'center', justifyContent: 'center', gap: px,
+      }}>
+        {[0,1,2].map(i => (
+          <div key={i} style={{ width: px, height: px, backgroundColor: '#222', borderRadius: '50%' }} />
+        ))}
+      </div>
+      <div style={{
+        width: px * 2, height: px * 2,
+        backgroundColor: '#fff', border: '1px solid #222', borderRadius: '50%',
+        position: 'absolute', bottom: -px * 2, left: px * 2,
+      }} />
+      <div style={{
+        width: px, height: px,
+        backgroundColor: '#fff', border: '1px solid #222', borderRadius: '50%',
+        position: 'absolute', bottom: -px * 3.5, left: -px,
+      }} />
+    </div>
+  );
+}
+
+// ── HP Bar ────────────────────────────────────────────────────
+function HPBar({ value, max = 100 }) {
+  const pct = Math.max(0, Math.min(100, (value / max) * 100));
+  const color = pct > 60 ? COLORS.hpGreen : pct > 30 ? COLORS.hpYellow : COLORS.hpRed;
+  return (
+    <div style={{
+      width: '100%', height: 8,
+      backgroundColor: '#1a1a2e', border: '1px solid #222',
+      borderRadius: 2, overflow: 'hidden',
+    }}>
+      <div style={{
+        width: `${pct}%`, height: '100%',
+        backgroundColor: color, transition: 'width 0.5s ease',
+        boxShadow: `0 0 4px ${color}`,
+      }} />
+    </div>
+  );
+}
+
+// ── Nameplate ─────────────────────────────────────────────────
+function Nameplate({ name, className, selected, onClick }) {
+  return (
+    <div onClick={onClick} style={{
+      cursor: 'pointer',
+      padding: '2px 6px',
+      backgroundColor: selected ? '#00ff8822' : '#0a0a1a88',
+      border: `1px solid ${selected ? COLORS.border : '#333'}`,
+      borderRadius: 3, textAlign: 'center', minWidth: 70,
+    }}>
+      <div style={{
+        fontFamily: '"Press Start 2P", monospace', fontSize: 7,
+        color: COLORS.textPrimary, textShadow: `0 0 4px ${COLORS.textPrimary}`,
+        whiteSpace: 'nowrap',
+      }}>{name}</div>
+      <div style={{
+        fontFamily: '"Press Start 2P", monospace', fontSize: 5,
+        color: COLORS.textSecondary, opacity: 0.8,
+      }}>{className}</div>
+    </div>
+  );
+}
+
+// ── Action Log Entry ──────────────────────────────────────────
+function LogEntry({ entry }) {
+  return (
+    <div style={{
+      padding: '3px 8px', borderBottom: '1px solid #1a1a2e',
+      fontFamily: 'monospace', fontSize: 11,
+      display: 'flex', gap: 8, alignItems: 'center',
+    }}>
+      <span style={{ color: COLORS.textSecondary, fontSize: 9, minWidth: 55 }}>{entry.time}</span>
+      <span style={{ color: entry.color, fontWeight: 'bold', minWidth: 60 }}>{entry.agent}</span>
+      <span style={{ color: COLORS.textPrimary, opacity: 0.9 }}>{entry.action}</span>
+      {entry.detail && <span style={{ color: COLORS.textAccent, fontSize: 10 }}>— {entry.detail}</span>}
+    </div>
+  );
+}
+
+// ── Agent Detail Sidebar ──────────────────────────────────────
+function DetailPanel({ agent, onDeselect }) {
+  if (!agent) {
+    return (
+      <div style={{
+        flex: '0 0 240px', backgroundColor: COLORS.panelBg,
+        border: `1px solid ${COLORS.panelBorder}`, borderRadius: 4,
+        padding: 16, display: 'flex', alignItems: 'center', justifyContent: 'center',
+        color: '#444', fontFamily: 'monospace', fontSize: 12, textAlign: 'center',
+      }}>
+        Click an agent<br />to view details
+      </div>
+    );
+  }
+  const d = agent.def;
+  const s = agent.state;
+  return (
+    <div style={{
+      flex: '0 0 240px', backgroundColor: COLORS.panelBg,
+      border: `1px solid ${COLORS.border}44`, borderRadius: 4,
+      padding: 12, overflow: 'auto',
+    }}>
+      {/* header */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+        <div style={{
+          fontFamily: '"Press Start 2P", monospace', fontSize: 10,
+          color: COLORS.textPrimary, textShadow: `0 0 6px ${COLORS.textPrimary}`,
+        }}>{d.className}</div>
+        <button onClick={onDeselect} style={{
+          background: 'none', border: `1px solid ${COLORS.border}44`,
+          color: COLORS.textPrimary, cursor: 'pointer',
+          fontFamily: 'monospace', fontSize: 10, padding: '2px 6px', borderRadius: 2,
+        }}>✕</button>
+      </div>
+      {/* sprite preview */}
+      <div style={{ display: 'flex', justifyContent: 'center', margin: '12px 0', transform: 'scale(2)', transformOrigin: 'center center' }}>
+        <PixelSprite spriteKey={d.classType} scale={3} />
+      </div>
+      {/* stats */}
+      <div style={{ marginTop: 24 }}>
+        {[
+          ['Name', d.name],
+          ['Status', s.action],
+          ['Tasks', s.tasksDone],
+        ].map(([label, val]) => (
+          <div key={label} style={{ fontFamily: 'monospace', fontSize: 11, marginBottom: 4 }}>
+            <span style={{ color: COLORS.textSecondary }}>{label}:</span>{' '}
+            <span style={{ color: COLORS.textPrimary }}>{val}</span>
+          </div>
+        ))}
+        <div style={{ fontFamily: 'monospace', fontSize: 11, marginBottom: 2, color: COLORS.textSecondary }}>Activity:</div>
+        <HPBar value={s.hp} />
+      </div>
+      {/* description */}
+      <div style={{
+        marginTop: 12, padding: 8, backgroundColor: '#0a0a1a',
+        border: '1px solid #1a1a2e', borderRadius: 3,
+        fontFamily: 'monospace', fontSize: 10, color: '#888', lineHeight: 1.5,
+      }}>{d.desc}</div>
+      {/* history */}
+      <div style={{ marginTop: 12 }}>
+        <div style={{
+          fontFamily: '"Press Start 2P", monospace', fontSize: 7,
+          color: COLORS.textSecondary, marginBottom: 6,
+        }}>RECENT ACTIONS</div>
+        {s.history.slice(-8).reverse().map((h, i) => (
+          <div key={i} style={{
+            fontFamily: 'monospace', fontSize: 9, color: '#666',
+            padding: '2px 0', borderBottom: '1px solid #111',
+          }}>
+            <span style={{ color: '#555' }}>{h.time}</span>{' '}
+            <span style={{ color: COLORS.textPrimary, opacity: 0.7 }}>{h.action}</span>
+            {h.detail && <span style={{ color: COLORS.textAccent, opacity: 0.6 }}> — {h.detail}</span>}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── API HELPER ────────────────────────────────────────────────
+async function fetchDesktop(ep) {
+  try {
+    const r = await fetch(`/api/desktop/${ep}`);
+    if (!r.ok) throw new Error(r.status);
+    return await r.json();
+  } catch { return null; }
+}
+
+function summarize(action, data) {
+  if (!data) return 'No data returned';
+  switch (action) {
+    case 'Scan Files':
+      return data.files ? `Found ${data.files.length} files` : data.count ? `${data.count} files` : 'Scan complete';
+    case 'Check System':
+      return data.cpu != null ? `CPU ${data.cpu}% | RAM ${data.memory || data.ram || '?'}%` : 'Check done';
+    case 'Monitor Processes':
+      return data.processes ? `${data.processes.length} processes` : data.count ? `${data.count} procs` : 'Monitor done';
+    case 'Observe Desktop':
+      return data.windows ? `${data.windows.length} windows` : data.screenshot ? 'Screenshot captured' : 'Observe done';
+    default: return 'Done';
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// MAIN COMPONENT
+// ═══════════════════════════════════════════════════════════════
+export default function AgentWorkspace() {
+  const [agents, setAgents] = useState(() => AGENT_DEFS.map((def, i) => ({
+    def,
+    state: {
+      x: 40 + (i % 4) * 130 + Math.random() * 30,
+      y: 80 + Math.floor(i / 4) * 200 + Math.random() * 40,
+      dir: 1,
+      action: 'idle',
+      frame: 0,
+      hp: 100,
+      tasksDone: 0,
+      history: [],
+    },
+  })));
+  const [selIdx, setSelIdx] = useState(null);
+  const [log, setLog] = useState([]);
+  const [tick, setTick] = useState(0);
+  const timers = useRef({});
+
+  // animation tick
+  useEffect(() => {
+    const t = setInterval(() => setTick(f => f + 1), 250);
+    return () => clearInterval(t);
+  }, []);
+
+  // load pixel font
+  useEffect(() => {
+    const l = document.createElement('link');
+    l.href = 'https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap';
+    l.rel = 'stylesheet';
+    document.head.appendChild(l);
+  }, []);
+
+  const addLog = useCallback((name, action, detail, color) => {
+    const t = new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    setLog(prev => [...prev.slice(-100), { time: t, agent: name, action, detail, color }]);
+  }, []);
+
+  // perform a full action cycle for agent i
+  const doAction = useCallback(async (i) => {
+    setAgents(prev => {
+      const n = [...prev];
+      n[i] = { ...n[i], state: { ...n[i].state, action: 'thinking' } };
+      return n;
+    });
+    const a = agents[i];
+    if (!a) return;
+    const act = ACTIONS[Math.floor(Math.random() * ACTIONS.length)];
+    addLog(a.def.name, `Starting: ${act}`, null, a.def.color);
+
+    await new Promise(r => setTimeout(r, 800));
+
+    // walk
+    const tx = 40 + Math.random() * 500;
+    const ty = 60 + Math.random() * 300;
+    setAgents(prev => {
+      const n = [...prev];
+      n[i] = { ...n[i], state: { ...n[i].state, action: 'walking', x: tx, y: ty, dir: tx > prev[i].state.x ? 1 : -1 } };
+      return n;
+    });
+    await new Promise(r => setTimeout(r, 1600));
+
+    // work
+    setAgents(prev => {
+      const n = [...prev];
+      n[i] = { ...n[i], state: { ...n[i].state, action: 'working' } };
+      return n;
+    });
+
+    const ep = act === 'Scan Files' ? 'files' : act === 'Check System' ? 'system' : act === 'Monitor Processes' ? 'apps' : 'observe';
+    const data = await fetchDesktop(ep);
+    const detail = summarize(act, data);
+    addLog(a.def.name, act, detail, a.def.color);
+
+    await new Promise(r => setTimeout(r, 1200));
+
+    // done
+    setAgents(prev => {
+      const n = [...prev];
+      const old = n[i].state;
+      const now = new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      n[i] = {
+        ...n[i],
+        state: {
+          ...old,
+          action: 'idle',
+          tasksDone: old.tasksDone + 1,
+          hp: Math.max(10, Math.min(100, old.hp + Math.floor(Math.random() * 14) - 5)),
+          history: [...old.history.slice(-20), { time: now, action: act, detail }],
+        },
+      };
+      return n;
+    });
+  }, [agents, addLog]);
+
+  // auto-cycle: each agent acts every 5-8 s
+  useEffect(() => {
+    agents.forEach((_, i) => {
+      const delay = 5000 + Math.random() * 3000;
+      // stagger initial actions
+      const initial = setTimeout(() => {
+        doAction(i);
+        timers.current[i] = setInterval(() => doAction(i), delay);
+      }, i * 1200 + Math.random() * 2000);
+      timers.current[`init_${i}`] = initial;
+    });
+    return () => {
+      Object.values(timers.current).forEach(t => { clearTimeout(t); clearInterval(t); });
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const selected = selIdx != null ? agents[selIdx] : null;
+
+  return (
+    <div style={{
+      width: '100%', height: '100vh', backgroundColor: COLORS.bg,
+      display: 'flex', flexDirection: 'column',
+      fontFamily: '"Press Start 2P", monospace',
+      overflow: 'hidden', imageRendering: 'pixelated',
+    }}>
+      {/* ── Title Bar ─────────────────────────────────────── */}
+      <div style={{
+        flex: '0 0 48px', backgroundColor: '#0d0d22',
+        borderBottom: `2px solid ${COLORS.border}`,
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        padding: '0 16px',
+      }}>
+        <div style={{
+          fontSize: 14, color: COLORS.textPrimary,
+          textShadow: `0 0 8px ${COLORS.textPrimary}, 0 0 16px ${COLORS.textPrimary}44`,
+          letterSpacing: 3,
+        }}>▶ AGENT WORKSPACE</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+          <span style={{ fontSize: 9, color: COLORS.textSecondary }}>
+            AGENTS: {agents.length}
+          </span>
+          <span style={{ fontSize: 9, color: COLORS.textAccent }}>● ONLINE</span>
+        </div>
+      </div>
+
+      {/* ── Main Content ──────────────────────────────────── */}
+      <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
+        {/* workspace + log */}
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+
+          {/* ── Workspace Floor ───────────────────────────── */}
+          <div style={{
+            flex: 1, position: 'relative',
+            backgroundImage: `
+              linear-gradient(45deg, ${COLORS.floor1} 25%, transparent 25%),
+              linear-gradient(-45deg, ${COLORS.floor1} 25%, transparent 25%),
+              linear-gradient(45deg, transparent 75%, ${COLORS.floor2} 75%),
+              linear-gradient(-45deg, transparent 75%, ${COLORS.floor2} 75%)
+            `,
+            backgroundSize: '32px 32px',
+            backgroundPosition: '0 0, 0 16px, 16px -16px, -16px 0',
+            backgroundColor: COLORS.floor1,
+            overflow: 'hidden', margin: 8, borderRadius: 4,
+            border: `1px solid ${COLORS.border}44`,
+          }}>
+            {/* grid lines */}
+            <div style={{
+              position: 'absolute', inset: 0, pointerEvents: 'none',
+              backgroundImage: `
+                linear-gradient(${COLORS.border}06 1px, transparent 1px),
+                linear-gradient(90deg, ${COLORS.border}06 1px, transparent 1px)
+              `,
+              backgroundSize: '32px 32px',
+            }} />
+
+            {/* area labels */}
+            {[
+              { label: '📁 FILES', x: 20, y: 10 },
+              { label: '💻 SYSTEM', x: 220, y: 10 },
+              { label: '📊 PROCESSES', x: 420, y: 10 },
+              { label: '🖥 DESKTOP', x: 300, y: 320 },
+            ].map((lbl, i) => (
+              <div key={i} style={{
+                position: 'absolute', left: lbl.x, top: lbl.y,
+                fontSize: 7, color: '#334', fontFamily: '"Press Start 2P", monospace',
+                pointerEvents: 'none', userSelect: 'none',
+              }}>{lbl.label}</div>
+            ))}
+
+            {/* agents */}
+            {agents.map((a, i) => {
+              const s = a.state;
+              const isSel = selIdx === i;
+              return (
+                <div
+                  key={a.def.id}
+                  onClick={() => setSelIdx(i)}
+                  style={{
+                    position: 'absolute',
+                    left: s.x, top: s.y,
+                    cursor: 'pointer',
+                    transition: 'left 1.5s ease, top 1.5s ease',
+                    zIndex: isSel ? 100 : Math.floor(s.y) + 10,
+                  }}
+                >
+                  {/* selection ring */}
+                  {isSel && (
+                    <div style={{
+                      position: 'absolute', left: -8, top: -8,
+                      width: 64, height: 88,
+                      border: `2px solid ${COLORS.border}`,
+                      borderRadius: 4,
+                      boxShadow: `0 0 12px ${COLORS.border}55`,
+                      animation: 'pulse 1s infinite',
+                    }} />
+                  )}
+                  {/* shadow */}
+                  <div style={{
+                    position: 'absolute', bottom: -4, left: 8,
+                    width: 32, height: 6,
+                    backgroundColor: 'rgba(0,0,0,0.45)',
+                    borderRadius: '50%', filter: 'blur(2px)',
+                  }} />
+                  {/* sprite */}
+                  <AnimatedSprite
+                    spriteKey={a.def.classType}
+                    frame={tick + i * 3}
+                    action={s.action}
+                    direction={s.dir}
+                    scale={3}
+                  />
+                  {/* status icon */}
+                  {s.action !== 'idle' && (
+                    <div style={{
+                      position: 'absolute', top: -14, left: 16,
+                      fontSize: 6, fontFamily: '"Press Start 2P", monospace',
+                      color: COLORS.textAccent,
+                      textShadow: `0 0 4px ${COLORS.textAccent}`,
+                      whiteSpace: 'nowrap',
+                      backgroundColor: '#0a0a1aCC', padding: '1px 4px', borderRadius: 2,
+                    }}>
+                      {s.action === 'thinking' ? '...' : s.action === 'walking' ? '→' : '⚡'}
+                    </div>
+                  )}
+                  {/* nameplate & HP */}
+                  <div style={{ position: 'absolute', bottom: -28, left: -14, width: 76 }}>
+                    <Nameplate name={a.def.name} className={a.def.className} selected={isSel} />
+                    <HPBar value={s.hp} />
+                  </div>
+                </div>
+              );
+            })}
+
+            {/* active count */}
+            <div style={{
+              position: 'absolute', bottom: 6, right: 8,
+              fontFamily: 'monospace', fontSize: 9, color: '#333',
+            }}>
+              {agents.filter(a => a.state.action !== 'idle').length} active
+            </div>
+          </div>
+
+          {/* ── Action Log ────────────────────────────────── */}
+          <div style={{
+            flex: '0 0 130px', backgroundColor: COLORS.panelBg,
+            border: `1px solid ${COLORS.border}44`, borderRadius: 4,
+            margin: '0 8px 8px', overflow: 'auto',
+          }}>
+            <div style={{
+              padding: '6px 8px', borderBottom: `1px solid ${COLORS.border}44`,
+              fontFamily: '"Press Start 2P", monospace', fontSize: 8,
+              color: COLORS.textSecondary, position: 'sticky', top: 0,
+              backgroundColor: COLORS.panelBg, zIndex: 1,
+            }}>▶ ACTION LOG</div>
+            {log.length === 0 ? (
+              <div style={{ padding: 16, textAlign: 'center', color: '#333', fontFamily: 'monospace', fontSize: 11 }}>
+                Waiting for agent actions...
+              </div>
+            ) : log.map((e, i) => <LogEntry key={i} entry={e} />)}
+          </div>
+        </div>
+
+        {/* ── Right Sidebar ───────────────────────────────── */}
+        <DetailPanel agent={selected} onDeselect={() => setSelIdx(null)} />
+      </div>
+
+      <style>{`@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.5} }`}</style>
+    </div>
+  );
+}

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useWebSocket } from './useWebSocket';
-import { WS_URL } from '../config';
+import { API_URL, WS_URL } from '../config';
 import * as api from '../utils/api';
 
 export function useTraining(onToast) {
@@ -29,7 +29,25 @@ export function useTraining(onToast) {
     ? `${wsBase}/ws/${activeSession.session_id}`
     : null;
 
-  const { isConnected, subscribe } = useWebSocket(wsUrl);
+  const { isConnected: wsConnected, subscribe } = useWebSocket(wsUrl);
+
+  // HTTP health check fallback — when no WS session active
+  const [httpHealthy, setHttpHealthy] = useState(false);
+  useEffect(() => {
+    if (wsConnected) return; // WS is authoritative
+    let alive = true;
+    const check = async () => {
+      try {
+        const r = await fetch(`${API_URL.replace('/api','')}/health`, { signal: AbortSignal.timeout(5000) });
+        if (alive) setHttpHealthy(r.ok);
+      } catch { if (alive) setHttpHealthy(false); }
+    };
+    check();
+    const iv = setInterval(check, 10000);
+    return () => { alive = false; clearInterval(iv); };
+  }, [wsConnected]);
+
+  const isConnected = wsConnected || httpHealthy;
 
   // Subscribe to WebSocket events
   useEffect(() => {

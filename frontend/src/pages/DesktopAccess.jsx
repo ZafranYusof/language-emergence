@@ -15,7 +15,6 @@ const C = {
   textBright: '#eeeef5',
 };
 
-import { API_URL } from '../config';
 const API = API_URL;
 
 /* ───── keyframes (injected once) ───── */

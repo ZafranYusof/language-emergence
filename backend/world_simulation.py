@@ -38,6 +38,130 @@ DANGER_DAMAGE = 10
 INITIAL_AGENTS = 5
 AGENT_NAMES = ["NOVA", "PRISM", "ECHO", "FLUX", "NEXUS"]
 AGENT_COLORS = ["#00ddff", "#ffaa00", "#aa66ff", "#00ff88", "#ff66aa"]
+AGENT_PERSONALITIES = ["brave", "cautious", "friendly", "loner", "curious"]
+
+# ── Rich dialog templates ───────────────────────────────────────────────────
+DIALOG_TEMPLATES = {
+    "greeting": [
+        "Hey {target}! Good to see you.",
+        "{target}! Thought I lost you out here.",
+        "Over here, {target}! Let's stick together.",
+        "Finally, a friendly face. Hey {target}!",
+        "{target}! Watcha doing in these parts?",
+    ],
+    "farewell": [
+        "Heading out. Stay safe.",
+        "Gotta go find resources. Later!",
+        "I'm off. Don't die without me.",
+        "Moving on. Cover me if you can.",
+        "Exploring that way. Wish me luck.",
+    ],
+    "celebration": [
+        "LEVEL UP! I feel stronger now!",
+        "Quest done! That was a good one.",
+        "Yes! Just crafted something awesome.",
+        "I'm getting good at this survival thing.",
+        "Another quest complete. What's next?",
+    ],
+    "complaint": [
+        "Ugh, I'm starving...",
+        "Everything hurts. Need rest.",
+        "This weather is terrible.",
+        "Why is everything trying to kill me?",
+        "Running on empty here...",
+    ],
+    "discovery": [
+        "Whoa, look at this place!",
+        "Found something interesting over here!",
+        "There's good stuff at this location.",
+        "Jackpot! Resources everywhere.",
+        "This biome is beautiful, not gonna lie.",
+    ],
+    "trade_offer": [
+        "Hey, I've got extra food. Need some?",
+        "I can share resources if you're low.",
+        "Want to trade? I have {item}.",
+        "You look hungry. Here, take this.",
+        "Splitting my supplies. We're a team.",
+    ],
+    "warning": [
+        "DANGER! Stay away from here!",
+        "Watch out! Something's not right!",
+        "Move! Danger zone ahead!",
+        "Don't go that way. Trust me.",
+        "Warning! Hostile area! Turn back!",
+    ],
+    "philosophical": [
+        "Why do we gather... if we just consume?",
+        "Is this grid all there is to life?",
+        "I wonder what's beyond the edge.",
+        "Do the dangers think about us too?",
+        "We build shelters, but are we really safe?",
+    ],
+    "question": [
+        "Anyone seen food nearby?",
+        "Where's the nearest water source?",
+        "Is there a campfire around here?",
+        "Has anyone been to the mountain zone?",
+        "Need tools. Anyone know where?",
+    ],
+    "response": [
+        "Yeah, I know that spot!",
+        "Thanks for the heads up!",
+        "Copy that. On my way.",
+        "Got it. Be careful out there.",
+        "Noted. I'll check it out.",
+    ],
+    "group_call": [
+        "Everyone, regroup at my position!",
+        "Let's hunt together! More effective.",
+        "All agents, converge here for safety.",
+        "Group up! We're stronger together.",
+        "Rally point! Bring your supplies.",
+    ],
+    "victory": [
+        "Got it! That was a fight!",
+        "Take that! Predator down!",
+        "Hunt successful. We eat tonight!",
+        "Another one bites the dust!",
+        "Combat win! Feeling invincible!",
+    ],
+    "defeat_retreat": [
+        "Ouch! Falling back!",
+        "Too strong! Need to retreat!",
+        "Taking damage! Help!",
+        "I'm hurt! Pulling back to regroup.",
+        "That hurt... need to be more careful.",
+    ],
+    "weather_comment": [
+        "Rain again... everything's getting wet.",
+        "Storm incoming! Find shelter!",
+        "The fog makes it hard to see...",
+        "Clear skies. Perfect for exploring.",
+        "Weather's changing. Stay alert.",
+    ],
+    "night_fear": [
+        "It's dark... I don't like this.",
+        "Can barely see anything. Stay close.",
+        "Night time is the worst. So many sounds...",
+        "Wish I had a campfire right now.",
+        "The darkness hides everything...",
+    ],
+    "morning_greeting": [
+        "Dawn! Time to get moving!",
+        "New day, new opportunities!",
+        "Morning everyone! Let's make it count.",
+        "Sun's up. Finally can see again.",
+        "Good morning world. Let's survive today.",
+    ],
+    "idle_chat": [
+        "Just taking a breather.",
+        "Nice spot here. Peaceful.",
+        "Hmm... what should I do next?",
+        "Resting up before the next move.",
+        "Quiet moment. Enjoying it while it lasts.",
+    ],
+}
 
 SAVE_DIR = Path(__file__).parent / "data" / "world"
 
@@ -333,6 +457,9 @@ class AgentState:
     active_quests: List[str] = field(default_factory=list)  # quest_ids
     last_message_sent: str = ""
     combat_cooldown: float = 0.0
+    personality: str = ""
+    mood: str = "neutral"
+    current_action: str = "idle"
 
     def to_dict(self):
         return {
@@ -354,6 +481,9 @@ class AgentState:
             "level": self.level,
             "trust": {k: round(v, 2) for k, v in self.trust.items()},
             "active_quests": self.active_quests,
+            "personality": self.personality,
+            "mood": self.mood,
+            "current_action": self.current_action,
         }
 
 
@@ -476,6 +606,7 @@ class SimulationEngine:
         self.weather_length: int = 20  # ticks per weather period
         self._quest_counter: int = 0
         self._wildlife_counter: int = 0
+        self.world_events: List[Dict[str, Any]] = []  # persistent event feed
         self._init_world()
 
     # ── initialization ──────────────────────────────────────────────────────
@@ -496,6 +627,7 @@ class SimulationEngine:
         self.weather_tick = 0
         self._quest_counter = 0
         self._wildlife_counter = 0
+        self.world_events = []
 
         # Generate biomes — divide grid into 5 regions
         self.biome_map = self._generate_biomes()
@@ -532,6 +664,7 @@ class SimulationEngine:
                 x=sx,
                 y=sy,
                 inventory={},
+                personality=AGENT_PERSONALITIES[i % len(AGENT_PERSONALITIES)],
             )
             # Initialize trust with all other agents
             for j in range(INITIAL_AGENTS):
@@ -709,19 +842,30 @@ class SimulationEngine:
         # ── Agent processing ────────────────────────────────────────────────
         for agent in self.agents:
             if agent.energy <= 0 or agent.health <= 0:
+                agent.current_action = "dead"
+                agent.mood = "dead"
                 continue
+
+            # Update mood
+            agent.mood = self._compute_mood(agent)
 
             # 1) Energy decay (affected by time/weather)
             agent.energy -= ENERGY_DECAY_PER_TICK * energy_mult
             # Buildings: campfire nearby gives energy
+            near_campfire = False
             for bld in self.buildings:
                 if bld.type == BuildingType.CAMPFIRE:
                     dist = abs(bld.x - agent.x) + abs(bld.y - agent.y)
                     if dist <= 3:
                         agent.energy = min(agent.max_energy, agent.energy + 2.0)
+                        near_campfire = True
                 # Shelter: energy regen
                 if bld.type == BuildingType.SHELTER and bld.x == agent.x and bld.y == agent.y:
                     agent.energy = min(agent.max_energy, agent.energy + 3.0)
+                    near_campfire = True
+
+            if near_campfire and agent.energy > 70:
+                agent.current_action = "resting"
 
             if agent.energy <= 0:
                 agent.energy = 0
@@ -742,6 +886,7 @@ class SimulationEngine:
 
             # 5) Move along path (weather slows movement)
             if agent.path:
+                agent.current_action = "walking"
                 # In rain/storm, skip movement sometimes
                 if move_slow > 1.0 and random.random() < (1.0 - 1.0 / move_slow):
                     pass  # skip this tick's movement
@@ -766,6 +911,7 @@ class SimulationEngine:
             cell = self.grid.get(agent.x, agent.y)
             interaction = self._interact(agent, cell)
             if interaction:
+                agent.current_action = "gathering"
                 events.append(interaction)
 
             # 7) Check danger proximity
@@ -817,22 +963,58 @@ class SimulationEngine:
         if len(alive_wildlife) < 5 and self.tick_count % 20 == 0:
             self._spawn_wildlife(count=1)
 
-        # ── Generate language from events ───────────────────────────────────
+        # ── Generate language from events ────────────────────────────────────
         for ev in events:
             if ev.get("type") in ("found_food", "found_water", "found_tool", "danger_nearby", "danger_spawn",
                                    "craft_success", "building_placed", "quest_complete", "wildlife_killed",
-                                   "help_request", "resource_shared"):
-                msg_text = self._generate_language(ev)
+                                   "help_request", "resource_shared", "level_up", "wildlife_attacked"):
+                # Find the agent for this event
+                source_agent_name = ev.get("agent", "")
+                source_agent = next((a for a in self.agents if a.name == source_agent_name), None)
+                if source_agent:
+                    msg_text = self._generate_dialog(ev, source_agent)
+                else:
+                    msg_text = self._generate_language(ev)
                 if msg_text:
-                    source_agent = ev.get("agent", "world")
                     for a in self.agents:
-                        if a.name == source_agent:
+                        if a.name == source_agent_name:
                             bubble = ChatBubble(a.agent_id, msg_text, a.x, a.y)
                             self.chat_bubbles.append(bubble)
                             a.messages.append({"tick": self.tick_count, "text": msg_text, "event": ev["type"]})
                             self.stats["messages_sent"] += 1
                             events.append({"type": "chat", "agent": a.name, "text": msg_text, "x": a.x, "y": a.y})
+                            # Add to world events feed
+                            self.world_events.append({
+                                "tick": self.tick_count, "type": ev["type"],
+                                "text": f"{a.name}: {msg_text}", "agent": a.name, "x": a.x, "y": a.y,
+                            })
                             break
+
+        # ── Agent idle chatter and greeting/farewell ────────────────────────
+        for agent in self.agents:
+            if agent.energy <= 0 or agent.health <= 0:
+                continue
+            if agent.current_action == "walking" and random.random() < 0.08:
+                nearby = [a for a in self.agents if a.agent_id != agent.agent_id and a.energy > 0
+                          and abs(a.x - agent.x) + abs(a.y - agent.y) <= 2]
+                if not nearby and random.random() < 0.3:
+                    ev = {"type": "farewell", "agent": agent.name}
+                    msg = self._generate_dialog(ev, agent)
+                    if msg:
+                        bubble = ChatBubble(agent.agent_id, msg, agent.x, agent.y)
+                        self.chat_bubbles.append(bubble)
+                        self.world_events.append({"tick": self.tick_count, "type": "farewell", "text": f"{agent.name}: {msg}", "agent": agent.name})
+            elif agent.current_action == "resting" and random.random() < 0.1:
+                ev = {"type": "idle_chat", "agent": agent.name}
+                msg = self._generate_dialog(ev, agent)
+                if msg:
+                    bubble = ChatBubble(agent.agent_id, msg, agent.x, agent.y)
+                    self.chat_bubbles.append(bubble)
+                    self.world_events.append({"tick": self.tick_count, "type": "idle_chat", "text": f"{agent.name}: {msg}", "agent": agent.name})
+
+        # Keep world_events trimmed
+        if len(self.world_events) > 100:
+            self.world_events = self.world_events[-50:]
 
         # Prune dead chat bubbles
         self.chat_bubbles = [b for b in self.chat_bubbles if b.is_alive()]
@@ -912,6 +1094,7 @@ class SimulationEngine:
             if creature.health <= 0:
                 continue
             if abs(creature.x - agent.x) <= 1 and abs(creature.y - agent.y) <= 1:
+                agent.current_action = "fighting"
                 dmg = 10
                 if agent.inventory.get("tool", 0) > 0:
                     dmg = 15
@@ -944,7 +1127,7 @@ class SimulationEngine:
     def _agent_communicate(self, agent: AgentState, agents_pos: set,
                            events: List[Dict[str, Any]], visibility: int):
         """Agents send messages to nearby agents based on their situation."""
-        if random.random() > 0.3:
+        if random.random() > 0.5:
             return
 
         nearby_agents = []
@@ -958,45 +1141,62 @@ class SimulationEngine:
         if not nearby_agents:
             return
 
-        msg = ""
-        msg_type = ""
-        if agent.energy < 30:
-            msg = "help! low energy!"
-            msg_type = "help_request"
-        elif agent.health < 30:
-            msg = "help! injured!"
-            msg_type = "help_request"
-        elif agent.inventory.get("food", 0) > 3:
-            msg = "found food!"
-            msg_type = "found_food"
-        elif agent.inventory.get("water", 0) > 3:
-            msg = "found water!"
-            msg_type = "found_water"
-        # Check for nearby danger
-        for dx, dy in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
-            nx, ny = agent.x + dx, agent.y + dy
-            if 0 <= nx < GRID_W and 0 <= ny < GRID_H:
-                if self.grid.get(nx, ny).type == ObjectType.DANGER:
-                    msg = "danger here!"
-                    msg_type = "danger_warning"
-                    break
+        # Check for greeting (first time seeing nearby agents)
+        just_met = False
+        for other in nearby_agents:
+            if agent.trust.get(other.agent_id, 0.5) < 0.55:  # haven't interacted much
+                just_met = True
+                break
 
-        if msg and random.random() < 0.5:
+        # Determine communication type based on state
+        if agent.energy < 30:
+            ev = {"type": "help_request", "agent": agent.name, "x": agent.x, "y": agent.y}
+        elif agent.health < 30:
+            ev = {"type": "help_request", "agent": agent.name, "x": agent.x, "y": agent.y}
+        elif just_met and random.random() < 0.4:
+            ev = {"type": "greeting", "agent": agent.name}
+        elif agent.inventory.get("food", 0) > 3:
+            ev = {"type": "resource_shared", "agent": agent.name, "target": nearby_agents[0].name}
+        else:
+            # Check for nearby danger
+            has_danger = False
+            for dx, dy in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                nx, ny = agent.x + dx, agent.y + dy
+                if 0 <= nx < GRID_W and 0 <= ny < GRID_H:
+                    if self.grid.get(nx, ny).type == ObjectType.DANGER:
+                        has_danger = True
+                        break
+            if has_danger:
+                ev = {"type": "danger_nearby", "agent": agent.name, "x": agent.x, "y": agent.y}
+            elif self.weather in (Weather.STORM, Weather.RAIN):
+                ev = {"type": "weather_change", "agent": agent.name}
+            else:
+                ev = {"type": "communication", "agent": agent.name}
+
+        msg = self._generate_dialog(ev, agent)
+        if msg and random.random() < 0.6:
             agent.last_message_sent = msg
             for other in nearby_agents:
                 other.messages.append({
                     "tick": self.tick_count, "text": msg,
-                    "from": agent.name, "event": msg_type,
+                    "from": agent.name, "event": ev["type"],
                 })
             bubble = ChatBubble(agent.agent_id, msg, agent.x, agent.y)
             self.chat_bubbles.append(bubble)
             events.append({"type": "communication", "agent": agent.name, "text": msg, "x": agent.x, "y": agent.y})
+            self.world_events.append({
+                "tick": self.tick_count, "type": ev["type"],
+                "text": f"{agent.name}: {msg}", "agent": agent.name, "x": agent.x, "y": agent.y,
+            })
 
             # Messages influence trust
-            if msg_type in ("help_request",):
-                for other in nearby_agents:
-                    old_trust = agent.trust.get(other.agent_id, 0.5)
+            for other in nearby_agents:
+                old_trust = agent.trust.get(other.agent_id, 0.5)
+                if ev["type"] in ("help_request",):
                     agent.trust[other.agent_id] = min(1.0, old_trust + 0.05)
+                elif ev["type"] == "greeting":
+                    agent.trust[other.agent_id] = min(1.0, old_trust + 0.03)
+                    other.trust[agent.agent_id] = min(1.0, other.trust.get(agent.agent_id, 0.5) + 0.03)
 
     # ── relationship / resource sharing ─────────────────────────────────────
 
@@ -1317,6 +1517,97 @@ class SimulationEngine:
                 if obj.respawn_timer >= 15:
                     self.grid.set(x, y, WorldObject(ObjectType.EMPTY))
 
+    def _compute_mood(self, agent: AgentState) -> str:
+        """Compute agent mood from current state."""
+        if agent.energy < 20:
+            return "exhausted"
+        if agent.health < 30:
+            return "injured"
+        if agent.energy > 80 and agent.health > 80:
+            return "happy"
+        if self.weather == Weather.STORM:
+            return "anxious"
+        if self.time_phase == TimePhase.NIGHT:
+            return "cautious"
+        if agent.current_action == "fighting":
+            return "aggressive"
+        if agent.active_quests:
+            return "determined"
+        return "neutral"
+
+    def _generate_dialog(self, event: Dict[str, Any], agent: AgentState) -> Optional[str]:
+        """Generate rich personality-based dialog from events."""
+        etype = event.get("type", "")
+        personality = agent.personality or "friendly"
+        mood = agent.mood or "neutral"
+
+        # Map event types to dialog categories
+        event_to_category = {
+            "found_food": "discovery",
+            "found_water": "discovery",
+            "found_tool": "discovery",
+            "danger_nearby": "warning",
+            "danger_spawn": "warning",
+            "craft_success": "celebration",
+            "building_placed": "celebration",
+            "quest_complete": "celebration",
+            "wildlife_killed": "victory",
+            "wildlife_attacked": "defeat_retreat",
+            "help_request": "warning",
+            "resource_shared": "trade_offer",
+            "communication": "response",
+            "death": "complaint",
+            "level_up": "celebration",
+            "greeting": "greeting",
+            "weather_change": "weather_comment",
+        }
+
+        category = event_to_category.get(etype, "idle_chat")
+
+        # Personality modifies category
+        if personality == "brave" and category == "defeat_retreat":
+            if random.random() < 0.5:
+                category = "victory"
+        elif personality == "cautious" and category == "discovery":
+            if random.random() < 0.3:
+                category = "warning"
+        elif personality == "loner" and category == "greeting":
+            if random.random() < 0.5:
+                category = "farewell"
+        elif personality == "curious" and category == "idle_chat":
+            if random.random() < 0.4:
+                category = "question"
+
+        # Time-based
+        if self.time_phase == TimePhase.NIGHT and random.random() < 0.3:
+            category = "night_fear"
+        elif self.time_phase == TimePhase.DAY and self.day_tick < 3 and random.random() < 0.3:
+            category = "morning_greeting"
+
+        # Mood-based
+        if mood == "exhausted" and random.random() < 0.4:
+            category = "complaint"
+        elif mood == "happy" and random.random() < 0.3:
+            category = "celebration"
+
+        # Rare philosophical (5%)
+        if random.random() < 0.05 and category == "idle_chat":
+            category = "philosophical"
+
+        templates = DIALOG_TEMPLATES.get(category, DIALOG_TEMPLATES["idle_chat"])
+        text = random.choice(templates)
+
+        # Fill template vars
+        nearby = [a for a in self.agents if a.agent_id != agent.agent_id and a.energy > 0
+                  and abs(a.x - agent.x) + abs(a.y - agent.y) <= COMM_RANGE]
+        if nearby:
+            target = random.choice(nearby)
+            text = text.replace("{target}", target.name)
+        inv_items = [k for k, v in agent.inventory.items() if v > 0]
+        text = text.replace("{item}", random.choice(inv_items) if inv_items else "stuff")
+
+        return text
+
     def _generate_language(self, event: Dict[str, Any]) -> Optional[str]:
         """Generate a language message based on event using templates."""
         templates = {
@@ -1400,6 +1691,7 @@ class SimulationEngine:
             "weather": self.weather.value,
             "day_tick": self.day_tick,
             "day_length": self.day_length,
+            "recent_events": self.world_events[-20:],
         }
 
     # ── persistence ────────────────────────────────────────────────────────

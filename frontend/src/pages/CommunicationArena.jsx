@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { API_URL, WS_URL } from '../config';
 
 const FEATURES = [
   { name: 'hue', label: 'Hue', icon: '🎨' },
@@ -811,7 +812,7 @@ export default function CommunicationArena({ sessionId }) {
       return;
     }
     setIsDemo(false);
-    fetch(`http://localhost:8000/api/sessions/${sessionId}/conversations?limit=50`)
+    fetch(`${API_URL}/sessions/${sessionId}/conversations?limit=50`)
       .then(r => r.json())
       .then(data => {
         const raw = Array.isArray(data) ? data : (data?.data || data?.conversations || []);
@@ -848,7 +849,9 @@ export default function CommunicationArena({ sessionId }) {
       return;
     }
     try {
-      const ws = new WebSocket(`ws://localhost:8000/ws/${sessionId}`);
+      const wsProto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const wsHost = WS_URL || `${wsProto}//${window.location.host}`;
+      const ws = new WebSocket(`${wsHost}/ws/${sessionId}`);
       ws.onopen = () => {
         console.log('[Arena] WebSocket connected for live mode');
       };

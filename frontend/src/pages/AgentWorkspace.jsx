@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { API_URL } from '../config';
 
 // ─── COLOR CONSTANTS ───────────────────────────────────────────
 const COLORS = {
@@ -1197,7 +1198,7 @@ function DetailPanel({ agent, onDeselect }) {
 // ── API HELPER ────────────────────────────────────────────────
 async function fetchDesktop(ep) {
   try {
-    const r = await fetch(`/api/desktop/${ep}`);
+    const r = await fetch(`${API_URL}/desktop/${ep}`);
     if (!r.ok) throw new Error(r.status);
     return await r.json();
   } catch { return null; }
@@ -1207,7 +1208,7 @@ async function fetchDesktop(ep) {
 async function fetchAutonomous(ep, method = 'GET') {
   try {
     const opts = { method, headers: { 'Content-Type': 'application/json' } };
-    const r = await fetch(`/api/desktop/autonomous/${ep}`, opts);
+    const r = await fetch(`${API_URL}/desktop/autonomous/${ep}`, opts);
     if (!r.ok) throw new Error(r.status);
     return await r.json();
   } catch { return null; }

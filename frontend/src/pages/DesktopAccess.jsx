@@ -1,3 +1,4 @@
+import { API_URL } from '../config';
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 
 /* ───── colour palette ───── */
@@ -14,7 +15,8 @@ const C = {
   textBright: '#eeeef5',
 };
 
-const API = 'http://localhost:8000';
+import { API_URL } from '../config';
+const API = API_URL;
 
 /* ───── keyframes (injected once) ───── */
 const styleId = 'desktop-access-keyframes';

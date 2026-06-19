@@ -1,4 +1,6 @@
-const API_BASE = '/api';
+import { API_URL } from '../config';
+
+const API_BASE = API_URL;
 
 export async function fetchSessions() {
   const res = await fetch(`${API_BASE}/sessions`);

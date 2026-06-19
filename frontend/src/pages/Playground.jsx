@@ -1,3 +1,4 @@
+import { API_URL } from '../config';
 import React, { useState, useEffect, useMemo } from 'react';
 import * as api from '../utils/api';
 
@@ -185,7 +186,7 @@ export default function Playground({ sessionId }) {
     if (!activeSession) return;
     setLoading(true);
     try {
-      const res = await fetch(`http://localhost:8000/api/sessions/${activeSession}/conversations?limit=200`);
+      const res = await fetch(`${API_URL}/sessions/${activeSession}/conversations?limit=200`);
       const data = await res.json();
       const convs = Array.isArray(data) ? data : [];
       // Find closest matching conversation
@@ -205,7 +206,7 @@ export default function Playground({ sessionId }) {
     if (!activeSession) return;
     setLoading(true);
     try {
-      const res = await fetch(`http://localhost:8000/api/sessions/${activeSession}/conversations?limit=200`);
+      const res = await fetch(`${API_URL}/sessions/${activeSession}/conversations?limit=200`);
       const data = await res.json();
       const convs = Array.isArray(data) ? data : [];
       const symbols = inputSymbols.map(Number);

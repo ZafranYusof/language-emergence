@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useWebSocket } from './useWebSocket';
+import { WS_URL } from '../config';
 import * as api from '../utils/api';
 
 export function useTraining(onToast) {
@@ -23,8 +24,9 @@ export function useTraining(onToast) {
 
   // Build per-session WebSocket URL
   const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  const wsBase = WS_URL || `${wsProtocol}//${window.location.host}`;
   const wsUrl = activeSession
-    ? `${wsProtocol}//${window.location.host}/ws/${activeSession.session_id}`
+    ? `${wsBase}/ws/${activeSession.session_id}`
     : null;
 
   const { isConnected, subscribe } = useWebSocket(wsUrl);

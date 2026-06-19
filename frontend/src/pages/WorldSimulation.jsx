@@ -61,11 +61,11 @@ function getTerrain(x, y) {
 
 /* ───── object colours ───── */
 const OBJ_COLORS = {
-  tree: '#22cc66',
-  water: '#3388ff',
+  tree: '#33cc66',
+  water: '#4499ff',
   food: '#ffdd44',
-  tool: '#888899',
-  danger: '#ff4444',
+  tool: '#99aabb',
+  danger: '#ff5555',
 };
 
 /* ───── keyframes ───── */
@@ -112,23 +112,28 @@ function drawTerrain(ctx, animFrame) {
 
       switch (terrain) {
         case 'grass': {
-          ctx.fillStyle = '#0f1f0f';
+          ctx.fillStyle = '#1a3318';
           ctx.fillRect(px, py, CELL, CELL);
           // Grass tufts
-          ctx.fillStyle = '#1a3a1a';
+          ctx.fillStyle = '#2a5a28';
           const gx1 = px + (seed * 30) | 0;
           const gy1 = py + (seed2 * 30) | 0;
           ctx.fillRect(gx1, gy1, 2, 3);
           if (seed > 0.3) ctx.fillRect(gx1 + 12, gy1 + 8, 2, 2);
           if (seed > 0.6) ctx.fillRect(gx1 + 6, gy1 + 20, 2, 3);
+          // Extra grass detail for visibility
+          if (seed > 0.5) {
+            ctx.fillStyle = '#336b30';
+            ctx.fillRect(gx1 + 18, gy1 + 14, 2, 2);
+          }
           break;
         }
         case 'stone': {
-          ctx.fillStyle = '#161618';
+          ctx.fillStyle = '#252528';
           ctx.fillRect(px, py, CELL, CELL);
           // Crack lines
-          ctx.strokeStyle = '#2a2a2e';
-          ctx.lineWidth = 0.5;
+          ctx.strokeStyle = '#3a3a40';
+          ctx.lineWidth = 0.8;
           ctx.beginPath();
           ctx.moveTo(px + seed * 20, py + seed2 * 10);
           ctx.lineTo(px + 15 + seed * 15, py + 25 + seed2 * 10);
@@ -142,29 +147,41 @@ function drawTerrain(ctx, animFrame) {
           break;
         }
         case 'dirt': {
-          ctx.fillStyle = '#1a140e';
+          ctx.fillStyle = '#2d2218';
           ctx.fillRect(px, py, CELL, CELL);
           // Pebbles
-          ctx.fillStyle = '#2a2018';
-          ctx.fillRect(px + (seed * 28) | 0, py + (seed2 * 28) | 0, 2, 2);
+          ctx.fillStyle = '#3d3020';
+          ctx.fillRect(px + (seed * 28) | 0, py + (seed2 * 28) | 0, 3, 3);
           if (seed > 0.3) ctx.fillRect(px + ((seed2 * 20 + 10) | 0), py + ((seed * 25 + 5) | 0), 3, 2);
+          if (seed > 0.6) {
+            ctx.fillStyle = '#4a3a28';
+            ctx.fillRect(px + ((seed * 15 + 5) | 0), py + ((seed2 * 15 + 15) | 0), 2, 2);
+          }
           break;
         }
         case 'water': {
-          ctx.fillStyle = '#0a1525';
+          ctx.fillStyle = '#0e2240';
           ctx.fillRect(px, py, CELL, CELL);
           // Animated wave lines
-          ctx.strokeStyle = '#1a3050';
-          ctx.lineWidth = 0.5;
+          ctx.strokeStyle = '#1a4070';
+          ctx.lineWidth = 0.8;
           const waveOff = ((animFrame * 0.02 + seed * 10) % 40) | 0;
           ctx.beginPath();
           ctx.moveTo(px, py + waveOff);
           ctx.quadraticCurveTo(px + CELL / 2, py + waveOff - 3, px + CELL, py + waveOff);
           ctx.stroke();
+          // Second wave
+          if (seed > 0.4) {
+            const waveOff2 = ((animFrame * 0.015 + seed * 20 + 15) % 40) | 0;
+            ctx.beginPath();
+            ctx.moveTo(px, py + waveOff2);
+            ctx.quadraticCurveTo(px + CELL / 2, py + waveOff2 + 2, px + CELL, py + waveOff2);
+            ctx.stroke();
+          }
           break;
         }
         default:
-          ctx.fillStyle = '#0d0d1a';
+          ctx.fillStyle = '#151520';
           ctx.fillRect(px, py, CELL, CELL);
       }
     }
@@ -172,7 +189,7 @@ function drawTerrain(ctx, animFrame) {
 }
 
 function drawGrid(ctx) {
-  ctx.strokeStyle = C.gridLine;
+  ctx.strokeStyle = '#2a2a40';
   ctx.lineWidth = 0.5;
   ctx.globalAlpha = 0.4;
   for (let x = 0; x <= GRID; x++) {
@@ -229,11 +246,11 @@ function drawObjects(ctx, objects, animFrame) {
     } else if (obj.type === 'tree') {
       // Pixel art tree
       ctx.globalAlpha = 1;
-      ctx.fillStyle = '#1a5a2a';
+      ctx.fillStyle = '#2a7a3a';
       ctx.fillRect(cx - 6, cy - 10, 12, 4);
       ctx.fillRect(cx - 8, cy - 7, 16, 4);
       ctx.fillRect(cx - 6, cy - 3, 12, 3);
-      ctx.fillStyle = '#5a3a1a';
+      ctx.fillStyle = '#6a4a2a';
       ctx.fillRect(cx - 2, cy, 4, 5);
     } else if (obj.type === 'water') {
       // Water drop pixel art
@@ -501,8 +518,8 @@ function getDayNightAlpha() {
   const time = Date.now() / 1000;
   // 60 second full cycle
   const phase = Math.sin(time / 30 * Math.PI);
-  // phase goes -1 to 1; map to 0 (day) to 0.25 (night)
-  return Math.max(0, -phase) * 0.25;
+  // phase goes -1 to 1; map to 0 (day) to 0.12 (night) — subtle
+  return Math.max(0, -phase) * 0.12;
 }
 
 function renderWorld(ctx, world, selectedAgent, camera, effects) {
@@ -511,7 +528,7 @@ function renderWorld(ctx, world, selectedAgent, camera, effects) {
   const now = Date.now();
 
   // Clear canvas
-  ctx.fillStyle = '#050508';
+  ctx.fillStyle = '#0a0a12';
   ctx.fillRect(0, 0, w, h);
 
   // Apply camera transform

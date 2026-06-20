@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { ensureSprites, drawSprite, drawSpeechBubble, ParticleSystem, C as PC, SPRITE_NAMES } from '../utils/pixelEngine';
 
 /* ───── colour palette ───── */
 const C = {
@@ -242,12 +243,14 @@ function NetworkGraph({ agents, relationships, selectedNode, onSelectNode, hover
                 transition: 'all 0.3s',
               }}
             />
-            {/* Icon */}
-            <text x={agent.x} y={agent.y + 1} fill={C.textBright} fontSize={14}
-              textAnchor="middle" dominantBaseline="middle"
-              style={{ pointerEvents: 'none' }}>
-              {agent.icon}
-            </text>
+            {/* Icon — pixel art sprite */}
+            <image
+              href={`/sprites/${SPRITE_NAMES[ai % SPRITE_NAMES.length]}.png`}
+              x={agent.x - 14} y={agent.y - 20}
+              width={28} height={42}
+              style={{ imageRendering: 'pixelated', pointerEvents: 'none' }}
+              clipPath={`circle(${nodeR}px at ${14}px ${20}px)`}
+            />
             {/* Name label */}
             <rect x={agent.x - 24} y={agent.y + nodeR + 4} width={48} height={14}
               rx={4} fill={`${C.bg}cc`} stroke={`${agent.color}33`} strokeWidth={0.5}

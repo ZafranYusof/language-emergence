@@ -5,6 +5,7 @@ import {
   Users, Brain, ArrowRight, ChevronDown, ChevronUp,
   Pause, Trash2, RotateCcw,
 } from 'lucide-react';
+import PixelCanvasHeader from '../components/PixelCanvasHeader';
 
 const API_URL = '/api';
 
@@ -279,6 +280,17 @@ function SwarmIntelligence() {
           </div>
         )}
       </div>
+
+      {/* Pixel art swarm scene */}
+      <PixelCanvasHeader
+        agents={(sessions || []).slice(0, 5).map((s, i) => ({
+          name: s.name || `S${i}`,
+          color: ['#00ff88', '#00ddff', '#ffaa00', '#aa66ff', '#ff66aa'][i % 5],
+          sprite: ['mage', 'knight', 'ranger', 'cleric', 'sage'][i % 5],
+        }))}
+        height={120}
+        label="SWARM HIVE MIND"
+      />
 
       {error && (
         <motion.div

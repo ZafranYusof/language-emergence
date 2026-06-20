@@ -1,6 +1,7 @@
 import { API_URL } from '../config';
 import React, { useState, useEffect, useMemo } from 'react';
 import * as api from '../utils/api';
+import PixelCanvasHeader from '../components/PixelCanvasHeader';
 
 const FEATURES = [
   { name: 'hue', label: 'Hue', icon: '🎨', min: 0, max: 1 },
@@ -260,6 +261,16 @@ export default function Playground({ sessionId }) {
           </div>
         </div>
       </div>
+
+      {/* Pixel art scene */}
+      <PixelCanvasHeader
+        agents={[
+          { name: 'Speaker', color: '#4488ff', sprite: 'mage' },
+          { name: 'Listener', color: '#ff4444', sprite: 'cleric' },
+        ]}
+        height={120}
+        label="PLAYGROUND ARENA"
+      />
 
       {/* ─── Mode Toggle ─── */}
       <div style={{ display:'flex', gap:4, marginBottom:16 }}>

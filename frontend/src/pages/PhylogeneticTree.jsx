@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Play, Pause, RotateCcw, FastForward, TreePine, ChevronRight, GitBranch, Zap, X } from 'lucide-react';
 import * as api from '../utils/api';
+import { ensureSprites, SPRITE_NAMES } from '../utils/pixelEngine';
+import PixelCanvasHeader from '../components/PixelCanvasHeader';
 
 /* ─── colour palette ─── */
 const COL = {
@@ -441,6 +443,18 @@ export default function PhylogeneticTree() {
         </div>
       )}
 
+      {/* Pixel art evolution scene */}
+      <PixelCanvasHeader
+        agents={layout.nodes.slice(0, 6).map((n, i) => ({
+          name: n.snap.label || `Gen ${n.snap.episode}`,
+          color: DIALECT_PALETTE[n.snap.dialect_group ? n.snap.dialect_group % DIALECT_PALETTE.length : i % DIALECT_PALETTE.length],
+          sprite: SPRITE_NAMES[n.snap.episode % SPRITE_NAMES.length],
+        }))}
+        height={100}
+        showTerrain={false}
+        label="EVOLUTION TIMELINE"
+      />
+
       {/* Main tree SVG */}
       <div style={{
         background: COL.panel, border: `1px solid ${COL.border}`,
@@ -607,6 +621,17 @@ export default function PhylogeneticTree() {
                       filter: isCurrent ? `drop-shadow(0 0 6px ${nodeColor})` : 'none',
                       transition: 'all 0.3s',
                     }}
+                  />
+
+                  {/* Pixel art sprite avatar */}
+                  <image
+                    href={`/sprites/${SPRITE_NAMES[node.snap.episode % SPRITE_NAMES.length]}.png`}
+                    x={node.x + node.w / 2 - 12}
+                    y={node.y + 2}
+                    width={24}
+                    height={36}
+                    style={{ imageRendering: 'pixelated' }}
+                    opacity={isVisible ? 0.9 : 0.3}
                   />
 
                   {/* Node label */}

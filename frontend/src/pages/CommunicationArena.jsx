@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { API_URL, WS_URL } from '../config';
+import { useWebSocket } from '../hooks/useWebSocket';
 import { ensureSprites, drawSprite, drawSpeechBubble, drawBar, ParticleSystem, C as PC } from '../utils/pixelEngine';
 
 const FEATURES = [
@@ -704,7 +705,6 @@ export default function CommunicationArena({ sessionId }) {
   const [isDemo, setIsDemo] = useState(!sessionId);
   const [liveMode, setLiveMode] = useState(false);
   const timerRef = useRef(null);
-  const wsRef = useRef(null);
   const arenaEndRef = useRef(null);
 
   const normalizeConversation = useCallback((c) => {
@@ -734,6 +734,22 @@ export default function CommunicationArena({ sessionId }) {
       personality_traits: c.personality_traits || null,
     };
   }, []);
+
+  // WebSocket via reusable hook (auto-reconnect built in)
+  const wsProto = typeof window !== 'undefined' ? (window.location.protocol === 'https:' ? 'wss:' : 'ws:') : 'ws:';
+  const wsBase = WS_URL || (typeof window !== 'undefined' ? `${wsProto}//${window.location.host}` : '');
+  const wsUrl = (sessionId && liveMode) ? `${wsBase}/ws/${sessionId}` : null;
+  const { isConnected: wsConnected, subscribe } = useWebSocket(wsUrl);
+
+  useEffect(() => {
+    if (!wsUrl) return;
+    const unsub = subscribe('new_conversation', (data) => {
+      const mapped = normalizeConversation(data);
+      setConversations(prev => [...prev, mapped].slice(-100));
+      setCurrentIdx(prev => prev + 1);
+    });
+    return unsub;
+  }, [wsUrl, subscribe, normalizeConversation]);
 
   useEffect(() => {
     if (!sessionId) {
@@ -767,33 +783,6 @@ export default function CommunicationArena({ sessionId }) {
         setIsDemo(true);
       });
   }, [sessionId, normalizeConversation]);
-
-  useEffect(() => {
-    if (!sessionId || !liveMode) {
-      if (wsRef.current) { wsRef.current.close(); wsRef.current = null; }
-      return;
-    }
-    try {
-      const wsProto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const wsHost = WS_URL || `${wsProto}//${window.location.host}`;
-      const ws = new WebSocket(`${wsHost}/ws/${sessionId}`);
-      ws.onopen = () => console.log('[Arena] WebSocket connected');
-      ws.onmessage = (e) => {
-        try {
-          const msg = JSON.parse(e.data);
-          if (msg.type === 'new_conversation') {
-            const mapped = normalizeConversation(msg.data);
-            setConversations(prev => [...prev, mapped].slice(-100));
-            setCurrentIdx(prev => prev + 1);
-          }
-        } catch (err) { console.warn('[Arena] WS parse error:', err); }
-      };
-      ws.onerror = (err) => console.warn('[Arena] WS error:', err);
-      ws.onclose = () => console.log('[Arena] WS closed');
-      wsRef.current = ws;
-      return () => ws.close();
-    } catch (err) { console.warn('[Arena] WS connect failed:', err); }
-  }, [sessionId, liveMode, normalizeConversation]);
 
   useEffect(() => {
     if (liveMode && arenaEndRef.current) arenaEndRef.current.scrollIntoView({ behavior: 'smooth' });

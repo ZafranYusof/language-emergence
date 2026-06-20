@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, Suspense } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   LayoutDashboard, Radio, GitBranch, Settings, History,
@@ -7,38 +7,44 @@ import {
   GitCompare, Grid3X3, TreePine, Eye,
   Sun, Moon, Swords, BookKey, Gamepad2, Brain, Monitor, Users,
  Clapperboard, Mic, ArrowLeftRight,
- TrendingUp, Sparkles, Network, Languages, ScrollText, MessageSquare,
- Bug,
+  TrendingUp, Sparkles, Network, Languages, ScrollText, MessageSquare,
+  Bug,
 } from 'lucide-react';
+
+/* Eager imports (first-paint critical) */
 import Dashboard from './components/Dashboard';
 import ErrorBoundary from './components/ErrorBoundary';
-import LiveFeed from './components/LiveFeed';
-import LanguageAnalysis from './components/LanguageAnalysis';
-import EnvironmentEditor from './components/EnvironmentEditor';
-import ReplaySystem from './components/ReplaySystem';
-import SessionComparison from './pages/SessionComparison';
-import MessageHeatmap from './pages/MessageHeatmap';
-import PhylogeneticTree from './pages/PhylogeneticTree';
-import AgentAttention from './pages/AgentAttention';
-import CommunicationArena from './pages/CommunicationArena';
-import SymbolDecoder from './pages/SymbolDecoder';
-import Playground from './pages/Playground';
-import AgentMinds from './pages/AgentMinds';
-import DesktopAccess from './pages/DesktopAccess';
-import AgentWorkspace from './pages/AgentWorkspace';
-import DemoMode from './pages/DemoMode';
-import VoiceControls from './pages/VoiceControls';
-import TrainingComparison from './pages/TrainingComparison';
-import LanguageEvolution from './pages/LanguageEvolution';
-import AgentSpecialization from './pages/AgentSpecialization';
-import SocialDynamics from './pages/SocialDynamics';
-import MemoryVisualization from './pages/MemoryVisualization';
-import TranslationPanel from './pages/TranslationPanel';
-import TrainingNarrator from './pages/TrainingNarrator';
-import NeuralVisualizer from './pages/NeuralVisualizer';
-import WorldSimulation from './pages/WorldSimulation';
-import HumanFeedback from './pages/HumanFeedback';
-import SwarmIntelligence from './pages/SwarmIntelligence';
+import LoadingScreen from './components/LoadingScreen';
+
+/* Lazy imports (code-split: loaded on demand) */
+const LiveFeed = React.lazy(() => import('./components/LiveFeed'));
+const LanguageAnalysis = React.lazy(() => import('./components/LanguageAnalysis'));
+const EnvironmentEditor = React.lazy(() => import('./components/EnvironmentEditor'));
+const ReplaySystem = React.lazy(() => import('./components/ReplaySystem'));
+const SessionComparison = React.lazy(() => import('./pages/SessionComparison'));
+const MessageHeatmap = React.lazy(() => import('./pages/MessageHeatmap'));
+const PhylogeneticTree = React.lazy(() => import('./pages/PhylogeneticTree'));
+const AgentAttention = React.lazy(() => import('./pages/AgentAttention'));
+const CommunicationArena = React.lazy(() => import('./pages/CommunicationArena'));
+const SymbolDecoder = React.lazy(() => import('./pages/SymbolDecoder'));
+const Playground = React.lazy(() => import('./pages/Playground'));
+const AgentMinds = React.lazy(() => import('./pages/AgentMinds'));
+const DesktopAccess = React.lazy(() => import('./pages/DesktopAccess'));
+const AgentWorkspace = React.lazy(() => import('./pages/AgentWorkspace'));
+const DemoMode = React.lazy(() => import('./pages/DemoMode'));
+const VoiceControls = React.lazy(() => import('./pages/VoiceControls'));
+const TrainingComparison = React.lazy(() => import('./pages/TrainingComparison'));
+const LanguageEvolution = React.lazy(() => import('./pages/LanguageEvolution'));
+const AgentSpecialization = React.lazy(() => import('./pages/AgentSpecialization'));
+const SocialDynamics = React.lazy(() => import('./pages/SocialDynamics'));
+const MemoryVisualization = React.lazy(() => import('./pages/MemoryVisualization'));
+const TranslationPanel = React.lazy(() => import('./pages/TranslationPanel'));
+const TrainingNarrator = React.lazy(() => import('./pages/TrainingNarrator'));
+const NeuralVisualizer = React.lazy(() => import('./pages/NeuralVisualizer'));
+const WorldSimulation = React.lazy(() => import('./pages/WorldSimulation'));
+const HumanFeedback = React.lazy(() => import('./pages/HumanFeedback'));
+const SwarmIntelligence = React.lazy(() => import('./pages/SwarmIntelligence'));
+
 import { useTraining } from './hooks/useTraining';
 import { ThemeProvider, useTheme } from './context/ThemeContext';
 import { ToastProvider, useToast } from './context/ToastContext';
@@ -848,7 +854,11 @@ function AppContent() {
                     <PageSkeleton pageId={activePage} />
                   </motion.div>
                 ) : (
-                  <ErrorBoundary key={activePage}><PageContent activePage={activePage} props={pageProps} /></ErrorBoundary>
+                  <ErrorBoundary key={activePage}>
+                  <Suspense fallback={<LoadingScreen />}>
+                    <PageContent activePage={activePage} props={pageProps} />
+                  </Suspense>
+                </ErrorBoundary>
                 )}
               </motion.div>
             </AnimatePresence>

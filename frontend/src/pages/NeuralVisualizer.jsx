@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo, Suspense } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { API_URL } from '../config';
+import { useWebSocket } from '../hooks/useWebSocket';
 import {
   Brain, Zap, Play, Pause, Camera, Settings,
   ChevronDown, ChevronUp, RefreshCw, Layers, Activity,
@@ -483,9 +484,20 @@ export default function NeuralVisualizer({ sessionId }) {
   const [use3D, setUse3D] = useState(true);
   const [showPanel, setShowPanel] = useState(true);
   const timerRef = useRef(null);
-  const wsRef = useRef(null);
-
   const effectiveSessionId = sessionId || 'demo';
+
+  // WebSocket via reusable hook (auto-reconnect built in)
+  const proto = typeof window !== 'undefined' ? (window.location.protocol === 'https:' ? 'wss' : 'ws') : 'ws';
+  const wsHost = typeof window !== 'undefined' ? window.location.host : 'localhost';
+  const wsUrl = `${proto}://${wsHost}/ws/neural/${effectiveSessionId}`;
+  const { send: wsSend, subscribe: wsSubscribe } = useWebSocket(wsUrl);
+
+  useEffect(() => {
+    const unsub = wsSubscribe('neural_update', (data) => {
+      if (data) setData(data);
+    });
+    return unsub;
+  }, [wsSubscribe]);
 
   // Fetch initial data
   const fetchData = useCallback(async () => {
@@ -530,39 +542,11 @@ export default function NeuralVisualizer({ sessionId }) {
     fetchData();
   }, [fetchData]);
 
-  // WebSocket connection
-  useEffect(() => {
-    let ws;
-    try {
-      const proto = window.location.protocol === 'https:' ? 'wss' : 'ws';
-      const wsUrl = `${proto}://${window.location.host}/ws/neural/${effectiveSessionId}`;
-      ws = new WebSocket(wsUrl);
-      ws.onmessage = (event) => {
-        try {
-          const msg = JSON.parse(event.data);
-          if (msg.type === 'neural_update' && msg.data) {
-            setData(msg.data);
-          }
-        } catch (e) { /* ignore parse errors */ }
-      };
-      ws.onerror = () => { /* fallback to polling */ };
-      ws.onclose = () => { /* will reconnect on session change */ };
-      wsRef.current = ws;
-    } catch (e) {
-      // WebSocket not available, polling will work
-    }
-    return () => { if (ws) ws.close(); };
-  }, [effectiveSessionId]);
-
   // Auto-capture timer
   useEffect(() => {
     if (autoCapture) {
       timerRef.current = setInterval(() => {
-        if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-          wsRef.current.send(JSON.stringify({ type: 'capture' }));
-        } else {
-          triggerCapture();
-        }
+        wsSend({ type: 'capture' });
       }, captureSpeed);
     } else {
       if (timerRef.current) clearInterval(timerRef.current);

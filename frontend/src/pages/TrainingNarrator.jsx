@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import * as api from '../utils/api';
+import { ensureSprites, drawSprite, drawSpeechBubble, ParticleSystem, C as PC, SPRITE_NAMES, hashCoord } from '../utils/pixelEngine';
 
 /* ───── colour palette ───── */
 const C = {
@@ -425,6 +426,275 @@ function EventFilter({ filter, setFilter }) {
   );
 }
 
+/* ───── Training Stage Canvas ───── */
+function TrainingStageCanvas({ latestEvent }) {
+  const canvasRef = useRef(null);
+  const animRef = useRef(null);
+  const stateRef = useRef({
+    t: 0,
+    particles: new ParticleSystem(),
+    speakerX: 200, speakerY: 160, speakerBob: 0, speakerShake: 0,
+    listenerX: 600, listenerY: 160, listenerBob: 0, listenerShake: 0,
+    animState: 'idle', // idle | success | fail | levelup | symbol
+    animTimer: 0,
+    bubbleText: '',
+    bubbleColor: '#00ff88',
+    symbolText: '',
+    symbolY: 0,
+    ringRadius: 0,
+  });
+
+  useEffect(() => {
+    ensureSprites();
+  }, []);
+
+  // React to latest event
+  useEffect(() => {
+    if (!latestEvent) return;
+    const s = stateRef.current;
+    s.animTimer = 2; // 2 seconds of animation
+
+    if (latestEvent.type === 'result') {
+      if (latestEvent.correct) {
+        s.animState = 'success';
+        s.bubbleText = '✓';
+        s.bubbleColor = '#00ff88';
+        // Add green sparkles
+        for (let i = 0; i < 20; i++) {
+          s.particles.add({
+            x: s.speakerX + (s.listenerX - s.speakerX) * Math.random(),
+            y: 100 + Math.random() * 60,
+            vx: (Math.random() - 0.5) * 60, vy: -20 - Math.random() * 40,
+            color: '#00ff88', size: 2 + Math.random() * 2, life: 1.5, type: 'sparkle', alpha: 0.8,
+          });
+        }
+      } else {
+        s.animState = 'fail';
+        s.bubbleText = '✗';
+        s.bubbleColor = '#ff4444';
+        // Add red smoke
+        for (let i = 0; i < 12; i++) {
+          s.particles.add({
+            x: s.speakerX + (s.listenerX - s.speakerX) * Math.random(),
+            y: 140 + Math.random() * 30,
+            vx: (Math.random() - 0.5) * 20, vy: -10 - Math.random() * 15,
+            color: '#ff4444', size: 4 + Math.random() * 3, life: 2, type: 'smoke', alpha: 0.6,
+          });
+        }
+      }
+    } else if (latestEvent.type === 'episode') {
+      s.animState = 'levelup';
+      s.ringRadius = 0;
+      // Golden ring expanding
+      for (let i = 0; i < 16; i++) {
+        const angle = (Math.PI * 2 * i) / 16;
+        s.particles.add({
+          x: 400, y: 140,
+          vx: Math.cos(angle) * 40, vy: Math.sin(angle) * 40,
+          color: '#ffaa00', size: 2, life: 1.5, type: 'sparkle', alpha: 0.9,
+        });
+      }
+    } else if (latestEvent.type === 'vocab') {
+      s.animState = 'symbol';
+      s.symbolText = `S${Math.floor(Math.random() * 25)}`;
+      s.symbolY = 0;
+    } else {
+      s.animState = 'idle';
+    }
+  }, [latestEvent]);
+
+  // Animation loop
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+
+    const animate = () => {
+      const s = stateRef.current;
+      const W = 800, H = 250;
+      const dt = 0.016;
+      s.t += dt;
+      s.animTimer = Math.max(0, s.animTimer - dt);
+
+      // Clear
+      ctx.clearRect(0, 0, W, H);
+
+      // Background gradient
+      const bgGrad = ctx.createLinearGradient(0, 0, 0, H);
+      bgGrad.addColorStop(0, '#0a0a1a');
+      bgGrad.addColorStop(0.7, '#0d0d22');
+      bgGrad.addColorStop(1, '#1a1a2e');
+      ctx.fillStyle = bgGrad;
+      ctx.fillRect(0, 0, W, H);
+
+      // Stage floor with grid pattern
+      ctx.fillStyle = '#0f0f28';
+      ctx.fillRect(0, 180, W, 70);
+      ctx.strokeStyle = '#2a2a40';
+      ctx.lineWidth = 0.5;
+      for (let x = 0; x < W; x += 30) {
+        ctx.beginPath();
+        ctx.moveTo(x, 180);
+        ctx.lineTo(x, H);
+        ctx.stroke();
+      }
+      for (let y = 180; y < H; y += 15) {
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(W, y);
+        ctx.stroke();
+      }
+
+      // Stage edge highlight
+      ctx.strokeStyle = '#4488ff33';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(0, 180);
+      ctx.lineTo(W, 180);
+      ctx.stroke();
+
+      // Ambient particles (dust motes, neural sparks)
+      if (Math.random() < 0.06) {
+        s.particles.add({
+          x: Math.random() * W, y: 20 + Math.random() * 140,
+          vx: (Math.random() - 0.5) * 8, vy: Math.random() * 5,
+          color: Math.random() > 0.5 ? '#4488ff22' : '#ff664422',
+          size: 1 + Math.random(), life: 3 + Math.random() * 2, type: 'firefly', alpha: 0.3,
+        });
+      }
+      // Neural sparks
+      if (Math.random() < 0.03) {
+        const sx = 300 + Math.random() * 200;
+        s.particles.add({
+          x: sx, y: 100 + Math.random() * 50,
+          vx: (Math.random() - 0.5) * 30, vy: -Math.random() * 20,
+          color: '#00ddff', size: 1.5, life: 1, type: 'spark', alpha: 0.6,
+        });
+      }
+
+      // Animation state effects
+      let speakerBob = 0, listenerBob = 0;
+      let speakerShake = 0, listenerShake = 0;
+
+      if (s.animState === 'success' && s.animTimer > 0) {
+        // Both agents bounce
+        speakerBob = Math.abs(Math.sin(s.t * 10)) * 15;
+        listenerBob = Math.abs(Math.sin(s.t * 10 + 0.5)) * 15;
+      } else if (s.animState === 'fail' && s.animTimer > 0) {
+        // Agents shake
+        speakerShake = Math.sin(s.t * 30) * 4;
+        listenerShake = Math.sin(s.t * 30 + 1) * 4;
+      } else if (s.animState === 'levelup' && s.animTimer > 0) {
+        // Golden ring expanding
+        s.ringRadius += dt * 80;
+        ctx.strokeStyle = `rgba(255, 170, 0, ${Math.max(0, 1 - s.ringRadius / 80)})`;
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.arc(s.speakerX, 140, s.ringRadius, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(s.listenerX, 140, s.ringRadius, 0, Math.PI * 2);
+        ctx.stroke();
+      } else if (s.animState === 'symbol' && s.animTimer > 0) {
+        // Floating symbol text rising
+        s.symbolY -= dt * 40;
+        ctx.font = 'bold 16px JetBrains Mono, monospace';
+        ctx.fillStyle = '#ffaa00';
+        ctx.textAlign = 'center';
+        ctx.globalAlpha = Math.max(0, s.animTimer / 2);
+        ctx.fillText(s.symbolText, s.speakerX, 140 + s.symbolY);
+        ctx.globalAlpha = 1;
+      }
+
+      // Draw speech bubbles for success/fail
+      if ((s.animState === 'success' || s.animState === 'fail') && s.animTimer > 0) {
+        drawSpeechBubble(ctx, s.speakerX, 110 - speakerBob, s.bubbleText, {
+          color: s.bubbleColor, maxWidth: 60, alpha: Math.min(1, s.animTimer),
+        });
+        drawSpeechBubble(ctx, s.listenerX, 110 - listenerBob, s.bubbleText, {
+          color: s.bubbleColor, maxWidth: 60, alpha: Math.min(1, s.animTimer),
+        });
+      }
+
+      // Draw Speaker (blue sprite, mage) on left
+      drawSprite(ctx, 'mage', s.speakerX + speakerShake, s.speakerY, {
+        scale: 1.8, bobY: -speakerBob, flip: false,
+        glow: s.animState === 'success' ? '#00ff88' : (s.animState === 'fail' ? '#ff4444' : '#4488ff'),
+      });
+      // Speaker label
+      ctx.font = '10px JetBrains Mono, monospace';
+      ctx.fillStyle = '#4488ff';
+      ctx.textAlign = 'center';
+      ctx.fillText('SPEAKER', s.speakerX, s.speakerY + 14);
+
+      // Draw Listener (red sprite, cleric) on right
+      drawSprite(ctx, 'cleric', s.listenerX + listenerShake, s.listenerY, {
+        scale: 1.8, bobY: -listenerBob, flip: true,
+        glow: s.animState === 'success' ? '#00ff88' : (s.animState === 'fail' ? '#ff4444' : '#ff6644'),
+      });
+      // Listener label
+      ctx.font = '10px JetBrains Mono, monospace';
+      ctx.fillStyle = '#ff6644';
+      ctx.textAlign = 'center';
+      ctx.fillText('LISTENER', s.listenerX, s.listenerY + 14);
+
+      // Connection beam between agents (when active)
+      if (s.animTimer > 0 && (s.animState === 'success' || s.animState === 'fail')) {
+        const beamColor = s.animState === 'success' ? '#00ff8833' : '#ff444433';
+        ctx.strokeStyle = beamColor;
+        ctx.lineWidth = 3;
+        ctx.setLineDash([6, 6]);
+        ctx.beginPath();
+        ctx.moveTo(s.speakerX + 30, s.speakerY - 30);
+        ctx.lineTo(s.listenerX - 30, s.listenerY - 30);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        // Arrow along beam
+        const arrowX = s.speakerX + 30 + ((s.listenerX - s.speakerX - 60) * ((s.t * 2) % 1));
+        ctx.fillStyle = s.animState === 'success' ? '#00ff88' : '#ff4444';
+        ctx.beginPath();
+        ctx.moveTo(arrowX, s.speakerY - 30 - 4);
+        ctx.lineTo(arrowX + 6, s.speakerY - 30);
+        ctx.lineTo(arrowX, s.speakerY - 30 + 4);
+        ctx.closePath();
+        ctx.fill();
+      }
+
+      // Update & draw particles
+      s.particles.update();
+      s.particles.draw(ctx);
+
+      // Label
+      ctx.font = '9px JetBrains Mono, monospace';
+      ctx.fillStyle = '#555577';
+      ctx.textAlign = 'left';
+      ctx.fillText('TRAINING STAGE', 10, 14);
+
+      animRef.current = requestAnimationFrame(animate);
+    };
+
+    animRef.current = requestAnimationFrame(animate);
+    return () => {
+      if (animRef.current) cancelAnimationFrame(animRef.current);
+    };
+  }, []);
+
+  return (
+    <div style={{
+      marginBottom: 16, borderRadius: 8, overflow: 'hidden',
+      border: `1px solid #55557733`, position: 'relative',
+    }}>
+      <canvas
+        ref={canvasRef}
+        width={800}
+        height={250}
+        style={{ width: '100%', height: 250, display: 'block', imageRendering: 'pixelated' }}
+      />
+    </div>
+  );
+}
+
 /* ───── Main Component ───── */
 export default function TrainingNarrator({ sessionId }) {
   const [events, setEvents] = useState([]);
@@ -522,6 +792,9 @@ export default function TrainingNarrator({ sessionId }) {
     if (filter === 'result') return e.type === 'result';
     return e.actor === filter;
   });
+
+  // Latest event for canvas animation
+  const latestEvent = events.length > 0 ? events[events.length - 1] : null;
 
   // Try to fetch real conversation data on session change
   useEffect(() => {
@@ -622,6 +895,9 @@ export default function TrainingNarrator({ sessionId }) {
           </select>
         </div>
       )}
+
+      {/* Pixel Art Training Stage Canvas */}
+      <TrainingStageCanvas latestEvent={latestEvent} />
 
       {/* Voice Controls */}
       <VoiceControls

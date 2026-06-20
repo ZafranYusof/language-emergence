@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { ensureSprites, drawSprite, drawSpeechBubble, drawBar, ParticleSystem, C as PC, SPRITE_NAMES } from '../utils/pixelEngine';
 
 /* ───── colour palette ───── */
 const C = {
@@ -521,9 +522,156 @@ export default function AgentSpecialization() {
   const [selectedAgent, setSelectedAgent] = useState(0);
   const agents = useMemo(() => generateAgentData(), []);
   const agent = agents[selectedAgent];
+ 
+  /* ───── Pixel Art Skill Arena Canvas ───── */
+  const arenaRef = useRef(null);
+  const arenaPSRef = useRef(new ParticleSystem());
+  const arenaRafRef = useRef(null);
+ 
+  useEffect(() => {
+    ensureSprites();
+    const canvas = arenaRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    const ps = arenaPSRef.current;
+    let prevLevels = agents.map(a => a.skills.reduce((s, sk) => s + sk.level, 0));
+ 
+    const draw = () => {
+      const W = canvas.width, H = canvas.height;
+      ctx.clearRect(0, 0, W, H);
+      // Background
+      ctx.fillStyle = PC.bg;
+      ctx.fillRect(0, 0, W, H);
+      // Grid lines
+      ctx.strokeStyle = PC.panelLight;
+      ctx.lineWidth = 0.5;
+      for (let gx = 0; gx < W; gx += 32) { ctx.beginPath(); ctx.moveTo(gx, 0); ctx.lineTo(gx, H); ctx.stroke(); }
+      for (let gy = 0; gy < H; gy += 32) { ctx.beginPath(); ctx.moveTo(0, gy); ctx.lineTo(W, gy); ctx.stroke(); }
+ 
+      const colW = W / agents.length;
+ 
+      // Connection beams between agents that share skills
+      ctx.lineWidth = 1;
+      for (let i = 0; i < agents.length; i++) {
+        for (let j = i + 1; j < agents.length; j++) {
+          const sharedSkills = agents[i].skills.filter(s1 =>
+            agents[j].skills.some(s2 => s1.name.split('_')[0] === s2.name.split('_')[0] && s1.unlocked && s2.unlocked)
+          );
+          if (sharedSkills.length > 0) {
+            ctx.globalAlpha = 0.15;
+            ctx.strokeStyle = agents[i].color;
+            ctx.beginPath();
+            ctx.moveTo(colW * i + colW / 2, H - 60);
+            ctx.lineTo(colW * j + colW / 2, H - 60);
+            ctx.stroke();
+            ctx.globalAlpha = 1;
+          }
+        }
+      }
+ 
+      agents.forEach((ag, i) => {
+        const cx = colW * i + colW / 2;
+        const baseY = H - 50;
+ 
+        // Colored aura/glow
+        const auraR = 30 + Math.sin(Date.now() / 600 + i) * 5;
+        const grad = ctx.createRadialGradient(cx, baseY - 20, 0, cx, baseY - 20, auraR);
+        grad.addColorStop(0, ag.color + '44');
+        grad.addColorStop(1, ag.color + '00');
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.arc(cx, baseY - 20, auraR, 0, Math.PI * 2);
+        ctx.fill();
+ 
+        // Skill icons floating above
+        ctx.font = '9px JetBrains Mono, monospace';
+        ctx.textAlign = 'center';
+        const unlockedSkills = ag.skills.filter(s => s.unlocked);
+        unlockedSkills.forEach((sk, si) => {
+          const angle = (Date.now() / 1500 + si * (Math.PI * 2 / unlockedSkills.length));
+          const ix = cx + Math.cos(angle) * 18;
+          const iy = baseY - 55 + Math.sin(angle) * 6;
+          ctx.fillStyle = sk.color;
+          ctx.globalAlpha = 0.8;
+          ctx.fillRect(ix - 2, iy - 2, 4, 4);
+          ctx.globalAlpha = 1;
+        });
+ 
+        // Agent sprite
+        const spriteIdx = i % SPRITE_NAMES.length;
+        drawSprite(ctx, SPRITE_NAMES[spriteIdx], cx, baseY, { scale: 1.3, glow: ag.color });
+ 
+        // Skill bar below sprite
+        const totalSkill = ag.skills.reduce((s, sk) => s + sk.level, 0);
+        const maxSkill = ag.skills.reduce((s, sk) => s + sk.maxLevel, 0);
+        drawBar(ctx, cx - 28, baseY + 4, 56, 5, totalSkill, maxSkill, ag.color);
+ 
+        // Agent name
+        ctx.font = '8px JetBrains Mono, monospace';
+        ctx.fillStyle = ag.color;
+        ctx.fillText(ag.name, cx, baseY + 16);
+ 
+        // Specialization label
+        ctx.font = '7px JetBrains Mono, monospace';
+        ctx.fillStyle = PC.dim;
+        ctx.fillText(ag.specialization.toUpperCase(), cx, baseY + 26);
+ 
+        // Check for skill level-up (golden sparkle explosion)
+        const newTotal = ag.skills.reduce((s, sk) => s + sk.level, 0);
+        if (newTotal > prevLevels[i]) {
+          for (let p = 0; p < 20; p++) {
+            const angle = (Math.PI * 2 * p) / 20;
+            ps.add({
+              x: cx + Math.cos(angle) * 5,
+              y: baseY - 20 + Math.sin(angle) * 5,
+              vx: Math.cos(angle) * 40,
+              vy: Math.sin(angle) * 40,
+              color: '#ffcc00',
+              size: 2 + Math.random() * 2,
+              life: 1.2,
+              type: 'sparkle',
+            });
+          }
+          prevLevels[i] = newTotal;
+        }
+      });
+ 
+      // Ambient skill orbs
+      if (Math.random() < 0.06) {
+        ps.add({
+          x: Math.random() * W,
+          y: 10 + Math.random() * 30,
+          vx: (Math.random() - 0.5) * 10,
+          vy: 5 + Math.random() * 8,
+          color: [PC.green, PC.cyan, PC.amber, PC.purple][Math.floor(Math.random() * 4)],
+          size: 1.5 + Math.random(),
+          life: 3,
+          type: 'firefly',
+        });
+      }
+ 
+      ps.update();
+      ps.draw(ctx);
+ 
+      // Title
+      ctx.font = '10px JetBrains Mono, monospace';
+      ctx.fillStyle = PC.amber;
+      ctx.textAlign = 'left';
+      ctx.fillText('◈ SKILL ARENA', 10, 16);
+ 
+      arenaRafRef.current = requestAnimationFrame(draw);
+    };
+    draw();
+    return () => { if (arenaRafRef.current) cancelAnimationFrame(arenaRafRef.current); };
+  }, [agents]);
 
   return (
     <div style={{ padding: 0 }}>
+      {/* Pixel Art Skill Arena */}
+      <div style={{ marginBottom: 20, borderRadius: 10, overflow: 'hidden', border: `1px solid ${C.dim}22` }}>
+        <canvas ref={arenaRef} width={800} height={180} style={{ width: '100%', display: 'block', imageRendering: 'pixelated' }} />
+      </div>
+
       {/* Header */}
       <div style={{
         display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start',

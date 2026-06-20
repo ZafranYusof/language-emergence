@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { motion } from 'framer-motion';
 import { Grid3X3, Play, Pause, Info } from 'lucide-react';
 import * as api from '../utils/api';
+import { ensureSprites, drawSprite, ParticleSystem, C as PC, SPRITE_NAMES } from '../utils/pixelEngine';
 
 const NUM_SYMBOLS = 20;
 const NUM_FEATURES = 8;
@@ -126,6 +127,126 @@ export default function MessageHeatmap() {
   const [loading, setLoading] = useState(false);
   const [hoveredCell, setHoveredCell] = useState(null);
   const [usingDemo, setUsingDemo] = useState(false);
+ 
+  /* ───── Pixel Art Heat Grid Canvas ───── */
+  const gridRef = useRef(null);
+  const gridPSRef = useRef(new ParticleSystem());
+  const gridRafRef = useRef(null);
+  const gridHoverRef = useRef(null);
+ 
+  useEffect(() => {
+    ensureSprites();
+    const canvas = gridRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    const ps = gridPSRef.current;
+    const W = canvas.width, H = canvas.height;
+    const gridCols = NUM_SYMBOLS;
+    const gridRows = NUM_FEATURES;
+    const cellW = (W - 60) / gridCols;
+    const cellH = (H - 60) / gridRows;
+    const offX = 30, offY = 30;
+ 
+    const draw = () => {
+      ctx.clearRect(0, 0, W, H);
+      ctx.fillStyle = PC.bg;
+      ctx.fillRect(0, 0, W, H);
+ 
+      // Column labels (features)
+      ctx.font = '7px JetBrains Mono, monospace';
+      ctx.textAlign = 'center';
+      for (let c = 0; c < gridCols; c++) {
+        ctx.fillStyle = PC.dim;
+        ctx.fillText(`s${c}`, offX + c * cellW + cellW / 2, 12);
+      }
+      // Row labels (symbols)
+      ctx.textAlign = 'right';
+      for (let r = 0; r < gridRows; r++) {
+        ctx.fillStyle = PC.dim;
+        ctx.fillText(`f${r}`, offX - 4, offY + r * cellH + cellH / 2 + 3);
+      }
+ 
+      // Grid cells
+      const hover = gridHoverRef.current;
+      for (let r = 0; r < gridRows; r++) {
+        for (let c = 0; c < gridCols; c++) {
+          const val = currentMatrix.normalized[c]?.[r] || 0;
+          const raw = currentMatrix.raw[c]?.[r] || 0;
+          const cx = offX + c * cellW;
+          const cy = offY + r * cellH;
+ 
+          // Color by intensity
+          const intensity = val;
+          const gr = Math.round(intensity * 255);
+          const gg = Math.round(intensity * 180);
+          ctx.fillStyle = `rgba(${gr}, ${gg}, ${Math.round(100 + intensity * 100)}, ${0.15 + intensity * 0.85})`;
+          ctx.fillRect(cx + 1, cy + 1, cellW - 2, cellH - 2);
+ 
+          // Pulse effect on hot cells
+          if (intensity > 0.6) {
+            const pulse = 0.3 + Math.sin(Date.now() / 300 + c + r) * 0.15;
+            ctx.fillStyle = `rgba(0, 255, 136, ${pulse})`;
+            ctx.fillRect(cx, cy, cellW, cellH);
+          }
+ 
+          // Hover highlight
+          if (hover && hover.r === c && hover.c === r) {
+            ctx.strokeStyle = '#00ff88';
+            ctx.lineWidth = 2;
+            ctx.strokeRect(cx, cy, cellW, cellH);
+          }
+        }
+      }
+ 
+      // Agents around the edges
+      for (let i = 0; i < Math.min(4, SPRITE_NAMES.length); i++) {
+        const positions = [
+          { x: offX + gridCols * cellW / 2, y: offY - 8 },
+          { x: offX + gridCols * cellW + 10, y: offY + gridRows * cellH / 2 },
+          { x: offX + gridCols * cellW / 2, y: offY + gridRows * cellH + 15 },
+          { x: offX - 15, y: offY + gridRows * cellH / 2 },
+        ];
+        const pos = positions[i];
+        drawSprite(ctx, SPRITE_NAMES[i], pos.x, pos.y, { scale: 0.9, glow: [PC.green, PC.cyan, PC.amber, PC.purple][i] });
+      }
+ 
+      // Flowing particles along high-activity paths
+      if (Math.random() < 0.1) {
+        const hotCells = [];
+        for (let r = 0; r < gridRows; r++) {
+          for (let c = 0; c < gridCols; c++) {
+            if ((currentMatrix.normalized[c]?.[r] || 0) > 0.5) hotCells.push({ c, r });
+          }
+        }
+        if (hotCells.length > 0) {
+          const hc = hotCells[Math.floor(Math.random() * hotCells.length)];
+          ps.add({
+            x: offX + hc.c * cellW + cellW / 2,
+            y: offY + hc.r * cellH + cellH / 2,
+            vx: (Math.random() - 0.5) * 20,
+            vy: (Math.random() - 0.5) * 20,
+            color: '#00ff88',
+            size: 1.5,
+            life: 1.5,
+            type: 'firefly',
+          });
+        }
+      }
+ 
+      ps.update();
+      ps.draw(ctx);
+ 
+      // Title
+      ctx.font = '10px JetBrains Mono, monospace';
+      ctx.fillStyle = PC.cyan;
+      ctx.textAlign = 'left';
+      ctx.fillText('◈ PIXEL HEAT GRID', 10, H - 6);
+ 
+      gridRafRef.current = requestAnimationFrame(draw);
+    };
+    draw();
+    return () => { if (gridRafRef.current) cancelAnimationFrame(gridRafRef.current); };
+  }, [currentMatrix]);
 
   // Temporal animation state
   const [rangeEnd, setRangeEnd] = useState(100); // percentage 0-100
@@ -243,6 +364,33 @@ export default function MessageHeatmap() {
 
   return (
     <div className="space-y-6 animate-slide-in">
+      {/* Pixel Art Heat Grid */}
+      <div style={{ marginBottom: 20, borderRadius: 10, overflow: 'hidden', border: '1px solid rgba(85,85,125,0.2)' }}>
+        <canvas
+          ref={gridRef}
+          width={400}
+          height={400}
+          style={{ width: '100%', maxWidth: 400, display: 'block', imageRendering: 'pixelated' }}
+          onMouseMove={(e) => {
+            const rect = e.target.getBoundingClientRect();
+            const scale = 400 / rect.width;
+            const mx = (e.clientX - rect.left) * scale;
+            const my = (e.clientY - rect.top) * scale;
+            const offX = 30, offY = 30;
+            const cellW = (400 - 60) / NUM_SYMBOLS;
+            const cellH = (400 - 60) / NUM_FEATURES;
+            const c = Math.floor((mx - offX) / cellW);
+            const r = Math.floor((my - offY) / cellH);
+            if (c >= 0 && c < NUM_SYMBOLS && r >= 0 && r < NUM_FEATURES) {
+              gridHoverRef.current = { r: c, c: r };
+            } else {
+              gridHoverRef.current = null;
+            }
+          }}
+          onMouseLeave={() => { gridHoverRef.current = null; }}
+        />
+      </div>
+
       <div>
         <h1 className="text-2xl font-bold flex items-center gap-2 section-header">
           <Grid3X3 size={24} className="text-neon-green" />

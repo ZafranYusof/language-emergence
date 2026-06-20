@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { ensureSprites, drawSprite, drawSpeechBubble, ParticleSystem, C as PC, SPRITE_NAMES } from '../utils/pixelEngine';
 
 /* ───── colour palette ───── */
 const C = {
@@ -335,6 +336,136 @@ export default function LanguageEvolution() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [selectedMetric, setSelectedMetric] = useState('all');
   const playRef = useRef(null);
+ 
+  /* ───── Pixel Art Timeline Canvas ───── */
+  const tlCanvasRef = useRef(null);
+  const tlPSRef = useRef(new ParticleSystem());
+  const tlRafRef = useRef(null);
+ 
+  useEffect(() => {
+    ensureSprites();
+    const canvas = tlCanvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    const ps = tlPSRef.current;
+    const W = canvas.width, H = canvas.height;
+ 
+    const draw = () => {
+      ctx.clearRect(0, 0, W, H);
+      ctx.fillStyle = PC.bg;
+      ctx.fillRect(0, 0, W, H);
+ 
+      // Pixel art road/path from left to right
+      const roadY = H - 45;
+      // Road base
+      ctx.fillStyle = '#2a2a3a';
+      ctx.fillRect(0, roadY - 8, W, 16);
+      // Road dashes
+      ctx.fillStyle = PC.dim;
+      for (let dx = 0; dx < W; dx += 20) {
+        ctx.fillRect(dx, roadY - 1, 10, 2);
+      }
+      // Road edges
+      ctx.fillStyle = PC.panelLight;
+      ctx.fillRect(0, roadY - 10, W, 2);
+      ctx.fillRect(0, roadY + 8, W, 2);
+ 
+      // Era markers and agent avatars
+      const eras = [
+        { pos: 0.1, label: 'Epoch 0', word: '▲ ● ■', color: PC.green },
+        { pos: 0.3, label: 'Epoch 15', word: '◆ ★', color: PC.cyan },
+        { pos: 0.5, label: 'Epoch 30', word: '✦ ◈', color: PC.amber },
+        { pos: 0.7, label: 'Epoch 45', word: '⊕ ▲●', color: PC.purple },
+        { pos: 0.9, label: 'Epoch 60', word: '★◆✦⊕', color: PC.red },
+      ];
+ 
+      eras.forEach((era, i) => {
+        const ex = W * era.pos;
+        // Glowing orb marker
+        const orbR = 4 + Math.sin(Date.now() / 400 + i) * 1.5;
+        ctx.beginPath();
+        ctx.arc(ex, roadY, orbR, 0, Math.PI * 2);
+        ctx.fillStyle = era.color;
+        ctx.shadowColor = era.color;
+        ctx.shadowBlur = 10;
+        ctx.fill();
+        ctx.shadowBlur = 0;
+ 
+        // Era label
+        ctx.font = '7px JetBrains Mono, monospace';
+        ctx.textAlign = 'center';
+        ctx.fillStyle = PC.dim;
+        ctx.fillText(era.label, ex, roadY + 20);
+ 
+        // Agent sprite above road
+        drawSprite(ctx, SPRITE_NAMES[i % SPRITE_NAMES.length], ex, roadY - 14, { scale: 1.1, glow: era.color });
+ 
+        // Speech bubble with sample word
+        drawSpeechBubble(ctx, ex, roadY - 60, era.word, { color: era.color, maxWidth: 80 });
+      });
+ 
+      // Current time marker
+      const markerX = W * 0.05 + (epoch / 59) * W * 0.9;
+      ctx.fillStyle = PC.amber;
+      ctx.shadowColor = PC.amber;
+      ctx.shadowBlur = 8;
+      ctx.fillRect(markerX - 1, roadY + 10, 2, 20);
+      ctx.shadowBlur = 0;
+      // Triangle pointer
+      ctx.beginPath();
+      ctx.moveTo(markerX - 4, roadY + 10);
+      ctx.lineTo(markerX + 4, roadY + 10);
+      ctx.lineTo(markerX, roadY + 5);
+      ctx.closePath();
+      ctx.fill();
+      // Epoch label
+      ctx.font = '9px JetBrains Mono, monospace';
+      ctx.textAlign = 'center';
+      ctx.fillStyle = PC.textBright;
+      ctx.fillText(`EP ${epoch}`, markerX, roadY + 38);
+ 
+      // Particle trail connecting eras
+      if (Math.random() < 0.08) {
+        ps.add({
+          x: Math.random() * W,
+          y: roadY - 5 + (Math.random() - 0.5) * 8,
+          vx: 8 + Math.random() * 15,
+          vy: (Math.random() - 0.5) * 3,
+          color: [PC.green, PC.cyan, PC.amber][Math.floor(Math.random() * 3)],
+          size: 1 + Math.random(),
+          life: 2.5,
+          type: 'firefly',
+        });
+      }
+ 
+      // Fireflies / ambient
+      if (Math.random() < 0.04) {
+        ps.add({
+          x: Math.random() * W,
+          y: 5 + Math.random() * (roadY - 30),
+          vx: (Math.random() - 0.5) * 6,
+          vy: (Math.random() - 0.5) * 4,
+          color: '#ffffaa',
+          size: 1,
+          life: 3,
+          type: 'firefly',
+        });
+      }
+ 
+      ps.update();
+      ps.draw(ctx);
+ 
+      // Title
+      ctx.font = '10px JetBrains Mono, monospace';
+      ctx.fillStyle = PC.green;
+      ctx.textAlign = 'left';
+      ctx.fillText('◈ LANGUAGE TIMELINE', 10, 16);
+ 
+      tlRafRef.current = requestAnimationFrame(draw);
+    };
+    draw();
+    return () => { if (tlRafRef.current) cancelAnimationFrame(tlRafRef.current); };
+  }, [epoch]);
 
   const { symbols, data: symbolTimeline } = useMemo(() => generateSymbolTimeline(60), []);
   const convergenceData = useMemo(() => generateConvergenceData(60), []);
@@ -369,6 +500,11 @@ export default function LanguageEvolution() {
 
   return (
     <div style={{ padding: 0 }}>
+      {/* Pixel Art Timeline */}
+      <div style={{ marginBottom: 20, borderRadius: 10, overflow: 'hidden', border: `1px solid ${C.dim}22` }}>
+        <canvas ref={tlCanvasRef} width={800} height={150} style={{ width: '100%', display: 'block', imageRendering: 'pixelated' }} />
+      </div>
+
       {/* Header */}
       <div style={{
         display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start',

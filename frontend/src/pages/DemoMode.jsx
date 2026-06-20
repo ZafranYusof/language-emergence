@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { API_URL } from '../config';
+import { ensureSprites, drawSprite, drawSpeechBubble, ParticleSystem, C as PC, SPRITE_NAMES, hashCoord } from '../utils/pixelEngine';
 
 // ─── COLOR CONSTANTS ───────────────────────────────────────────
 const C = {
@@ -207,6 +208,349 @@ function SummaryCard({ label, value, color }) {
       <div style={{ fontSize: 26, fontWeight: 'bold', color, fontFamily: "'JetBrains Mono', monospace" }}>{value}</div>
       <div style={{ fontSize: 9, color: '#888', letterSpacing: 1, marginTop: 4, textTransform: 'uppercase' }}>{label}</div>
     </motion.div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
+// PIXEL ART DEMO CANVAS
+// ═══════════════════════════════════════════════════════════════
+function DemoSceneCanvas({ phase, conv, currentIdx }) {
+  const canvasRef = useRef(null);
+  const animRef = useRef(null);
+  const stateRef = useRef({
+    t: 0,
+    particles: new ParticleSystem(),
+    weatherParticles: new ParticleSystem(),
+    speakerX: 200, speakerY: 200,
+    listenerX: 600, listenerY: 200,
+    targetX: 400, targetY: 170,
+    animTimer: 0,
+    prevPhase: 'idle',
+    trees: [],
+    waterBodies: [],
+  });
+
+  useEffect(() => {
+    ensureSprites();
+    const s = stateRef.current;
+    // Generate landscape features once
+    s.trees = [];
+    for (let i = 0; i < 8; i++) {
+      s.trees.push({
+        x: 50 + hashCoord(i, 7) * 700,
+        y: 190 + hashCoord(i, 13) * 30,
+        size: 0.6 + hashCoord(i, 3) * 0.6,
+      });
+    }
+    s.waterBodies = [
+      { x: 100, y: 230, w: 120, h: 20 },
+      { x: 580, y: 235, w: 100, h: 15 },
+    ];
+  }, []);
+
+  // React to phase changes
+  useEffect(() => {
+    if (!phase || phase === stateRef.current.prevPhase) return;
+    const s = stateRef.current;
+    s.prevPhase = phase;
+    s.animTimer = 2;
+
+    if (phase === 'result' && conv) {
+      if (conv.correct) {
+        // Success sparkles
+        for (let i = 0; i < 25; i++) {
+          s.particles.add({
+            x: 300 + Math.random() * 200, y: 150 + Math.random() * 80,
+            vx: (Math.random() - 0.5) * 80, vy: -20 - Math.random() * 50,
+            color: '#00ff88', size: 2 + Math.random() * 2, life: 2, type: 'sparkle', alpha: 0.8,
+          });
+        }
+      } else {
+        // Fail smoke
+        for (let i = 0; i < 15; i++) {
+          s.particles.add({
+            x: 300 + Math.random() * 200, y: 180 + Math.random() * 40,
+            vx: (Math.random() - 0.5) * 20, vy: -10 - Math.random() * 15,
+            color: '#ff4444', size: 4 + Math.random() * 3, life: 2, type: 'smoke', alpha: 0.5,
+          });
+        }
+      }
+    }
+  }, [phase, conv]);
+
+  // Animation loop
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+
+    const animate = () => {
+      const s = stateRef.current;
+      const W = 800, H = 300;
+      const dt = 0.016;
+      s.t += dt;
+      s.animTimer = Math.max(0, s.animTimer - dt);
+
+      // Clear
+      ctx.clearRect(0, 0, W, H);
+
+      // Sky gradient
+      const skyGrad = ctx.createLinearGradient(0, 0, 0, H * 0.7);
+      skyGrad.addColorStop(0, '#0a0a1a');
+      skyGrad.addColorStop(0.4, '#0d1025');
+      skyGrad.addColorStop(1, '#1a1a3e');
+      ctx.fillStyle = skyGrad;
+      ctx.fillRect(0, 0, W, H);
+
+      // Stars
+      ctx.fillStyle = '#ffffff';
+      for (let i = 0; i < 30; i++) {
+        const sx = (hashCoord(i, 1) * W) | 0;
+        const sy = (hashCoord(i, 2) * 100) | 0;
+        const blink = 0.3 + Math.sin(s.t * 2 + i) * 0.4;
+        ctx.globalAlpha = blink;
+        ctx.fillRect(sx, sy, 1, 1);
+      }
+      ctx.globalAlpha = 1;
+
+      // Terrain
+      const terrainGrad = ctx.createLinearGradient(0, 180, 0, H);
+      terrainGrad.addColorStop(0, '#1a2a1a');
+      terrainGrad.addColorStop(0.5, '#0d1a0d');
+      terrainGrad.addColorStop(1, '#0a150a');
+      ctx.fillStyle = terrainGrad;
+      ctx.beginPath();
+      ctx.moveTo(0, H);
+      for (let x = 0; x <= W; x += 3) {
+        const y = 210 + Math.sin(x * 0.01 + s.t * 0.1) * 8 + Math.sin(x * 0.03) * 4;
+        ctx.lineTo(x, y);
+      }
+      ctx.lineTo(W, H);
+      ctx.closePath();
+      ctx.fill();
+
+      // Grass tufts
+      ctx.fillStyle = '#2a4a2a';
+      for (let x = 0; x < W; x += 12) {
+        const h = hashCoord(x, 5);
+        const gy = 208 + Math.sin(x * 0.01 + s.t * 0.1) * 8 + Math.sin(x * 0.03) * 4;
+        ctx.fillRect(x, gy - h * 5, 2, h * 6);
+      }
+
+      // Water bodies
+      s.waterBodies.forEach(wb => {
+        const waterGrad = ctx.createLinearGradient(wb.x, wb.y, wb.x, wb.y + wb.h);
+        waterGrad.addColorStop(0, '#1a3060aa');
+        waterGrad.addColorStop(1, '#0a1830aa');
+        ctx.fillStyle = waterGrad;
+        ctx.fillRect(wb.x, wb.y, wb.w, wb.h);
+        // Water shimmer
+        ctx.fillStyle = '#4488ff22';
+        for (let wx = wb.x; wx < wb.x + wb.w; wx += 8) {
+          const wy = wb.y + Math.sin(wx * 0.1 + s.t * 3) * 2;
+          ctx.fillRect(wx, wy, 4, 1);
+        }
+      });
+
+      // Trees (pixel art trunks & canopy)
+      s.trees.forEach(tree => {
+        const tx = tree.x, ty = tree.y, ts = tree.size;
+        // Trunk
+        ctx.fillStyle = '#3a2a1a';
+        ctx.fillRect(tx - 2 * ts, ty - 20 * ts, 4 * ts, 22 * ts);
+        // Canopy
+        ctx.fillStyle = '#1a4a1a';
+        ctx.beginPath();
+        ctx.arc(tx, ty - 24 * ts, 12 * ts, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#2a5a2a';
+        ctx.beginPath();
+        ctx.arc(tx - 3 * ts, ty - 28 * ts, 8 * ts, 0, Math.PI * 2);
+        ctx.fill();
+      });
+
+      // Weather particles based on phase
+      if (s.animTimer > 0) {
+        if (phase === 'result' && conv?.correct) {
+          // Golden dust for success
+          if (Math.random() < 0.15) {
+            s.weatherParticles.add({
+              x: Math.random() * W, y: 0,
+              vx: (Math.random() - 0.5) * 10, vy: 20 + Math.random() * 15,
+              color: '#ffaa00', size: 1, life: 3, type: 'firefly', alpha: 0.5,
+            });
+          }
+        }
+      }
+
+      // Ambient dust motes
+      if (Math.random() < 0.04) {
+        s.weatherParticles.add({
+          x: Math.random() * W, y: Math.random() * H,
+          vx: (Math.random() - 0.5) * 5, vy: (Math.random() - 0.5) * 3,
+          color: '#ffffff', size: 0.5, life: 4, type: 'firefly', alpha: 0.15,
+        });
+      }
+
+      // Object indicator for target
+      if (conv && phase !== 'idle') {
+        const targetHue = conv.target_features?.[0] || 0.5;
+        const hueColor = targetHue < 0.15 ? '#ff4444' :
+          targetHue < 0.3 ? '#ff8844' :
+          targetHue < 0.45 ? '#ffaa00' :
+          targetHue < 0.6 ? '#00ff88' :
+          targetHue < 0.75 ? '#00ddff' :
+          targetHue < 0.9 ? '#aa66ff' : '#ff66aa';
+
+        // Draw pixel art object on pedestal
+        ctx.fillStyle = '#2a2a40';
+        ctx.fillRect(s.targetX - 15, s.targetY + 10, 30, 8);
+        ctx.fillStyle = '#1a1a30';
+        ctx.fillRect(s.targetX - 12, s.targetY + 6, 24, 6);
+
+        // Object shape
+        const shapeSize = 10 + (conv.target_features?.[1] || 0.5) * 10;
+        ctx.fillStyle = hueColor;
+        ctx.shadowColor = hueColor;
+        ctx.shadowBlur = phase === 'object' || phase === 'speaker' ? 12 : 4;
+        const shapeIdx = Math.floor((conv.target_features?.[5] || 0) * 5);
+        if (shapeIdx <= 1) {
+          // Circle
+          ctx.beginPath();
+          ctx.arc(s.targetX, s.targetY, shapeSize, 0, Math.PI * 2);
+          ctx.fill();
+        } else if (shapeIdx === 2) {
+          // Triangle
+          ctx.beginPath();
+          ctx.moveTo(s.targetX, s.targetY - shapeSize);
+          ctx.lineTo(s.targetX - shapeSize, s.targetY + shapeSize * 0.7);
+          ctx.lineTo(s.targetX + shapeSize, s.targetY + shapeSize * 0.7);
+          ctx.closePath();
+          ctx.fill();
+        } else {
+          // Square/diamond
+          ctx.save();
+          ctx.translate(s.targetX, s.targetY);
+          ctx.rotate(Math.PI / 4);
+          ctx.fillRect(-shapeSize * 0.7, -shapeSize * 0.7, shapeSize * 1.4, shapeSize * 1.4);
+          ctx.restore();
+        }
+        ctx.shadowBlur = 0;
+
+        // Target label
+        ctx.font = '9px JetBrains Mono, monospace';
+        ctx.fillStyle = '#ccccdd';
+        ctx.textAlign = 'center';
+        const tName = featureToName(conv.target_features);
+        ctx.fillText(tName, s.targetX, s.targetY - shapeSize - 8);
+      }
+
+      // Draw agents
+      const speakerGlow = phase === 'speaker' || phase === 'object' ? '#00ddff' : '#4488ff';
+      const listenerGlow = phase === 'listener' ? '#ffaa00' : '#ff6644';
+
+      // Agents face each other during communication
+      const speakerFlip = phase !== 'idle';
+      const listenerFlip = phase === 'idle';
+
+      // Speaker bounce during message
+      const speakerBob = phase === 'message' ? Math.abs(Math.sin(s.t * 6)) * 5 : 0;
+      const listenerBob = phase === 'result' ? Math.abs(Math.sin(s.t * 8)) * 5 : 0;
+
+      drawSprite(ctx, 'mage', s.speakerX, s.speakerY, {
+        scale: 1.6, bobY: -speakerBob, flip: speakerFlip, glow: speakerGlow,
+      });
+      ctx.font = '9px JetBrains Mono, monospace';
+      ctx.fillStyle = '#00ddff';
+      ctx.textAlign = 'center';
+      ctx.fillText('SPEAKER', s.speakerX, s.speakerY + 10);
+
+      drawSprite(ctx, 'cleric', s.listenerX, s.listenerY, {
+        scale: 1.6, bobY: -listenerBob, flip: listenerFlip, glow: listenerGlow,
+      });
+      ctx.font = '9px JetBrains Mono, monospace';
+      ctx.fillStyle = '#ff6644';
+      ctx.textAlign = 'center';
+      ctx.fillText('LISTENER', s.listenerX, s.listenerY + 10);
+
+      // Message arrows (during message phase)
+      if (phase === 'message' && conv?.message) {
+        const symbols = Array.isArray(conv.message) ? conv.message : [];
+        ctx.font = '11px JetBrains Mono, monospace';
+        ctx.fillStyle = '#ffaa00';
+        ctx.textAlign = 'center';
+        const symStr = symbols.map(s => typeof s === 'number' ? `S${s}` : s).join(' ');
+        ctx.fillText(symStr, 400, 160);
+
+        // Arrow animation
+        const arrowProgress = (s.t * 1.5) % 1;
+        const arrowX = s.speakerX + 40 + (s.listenerX - s.speakerX - 80) * arrowProgress;
+        ctx.fillStyle = '#00ff88';
+        ctx.beginPath();
+        ctx.moveTo(arrowX, 170);
+        ctx.lineTo(arrowX + 8, 174);
+        ctx.lineTo(arrowX, 178);
+        ctx.closePath();
+        ctx.fill();
+      }
+
+      // Speech bubbles
+      if (phase === 'speaker' && s.animTimer > 0) {
+        drawSpeechBubble(ctx, s.speakerX, s.speakerY - 50, 'Analyzing...', {
+          color: '#00ddff', maxWidth: 100, alpha: Math.min(1, s.animTimer),
+        });
+      }
+      if (phase === 'listener' && s.animTimer > 0) {
+        drawSpeechBubble(ctx, s.listenerX, s.listenerY - 50, 'Interpreting...', {
+          color: '#ffaa00', maxWidth: 100, alpha: Math.min(1, s.animTimer),
+        });
+      }
+      if (phase === 'result' && conv && s.animTimer > 0) {
+        const resultText = conv.correct ? '✓ CORRECT' : '✗ WRONG';
+        const resultColor = conv.correct ? '#00ff88' : '#ff4444';
+        drawSpeechBubble(ctx, 400, 140, resultText, {
+          color: resultColor, maxWidth: 100, alpha: Math.min(1, s.animTimer),
+        });
+      }
+
+      // Update & draw particles
+      s.particles.update();
+      s.particles.draw(ctx);
+      s.weatherParticles.update();
+      s.weatherParticles.draw(ctx);
+
+      // Label
+      ctx.font = '9px JetBrains Mono, monospace';
+      ctx.fillStyle = '#555577';
+      ctx.textAlign = 'left';
+      ctx.fillText('DEMO SCENE', 10, 14);
+      if (phase !== 'idle') {
+        ctx.textAlign = 'right';
+        ctx.fillStyle = '#555577';
+        ctx.fillText(`EP ${currentIdx + 1} • ${phase.toUpperCase()}`, W - 10, 14);
+      }
+
+      animRef.current = requestAnimationFrame(animate);
+    };
+
+    animRef.current = requestAnimationFrame(animate);
+    return () => {
+      if (animRef.current) cancelAnimationFrame(animRef.current);
+    };
+  }, [phase, conv, currentIdx]);
+
+  return (
+    <div style={{
+      flex: '0 0 auto', borderRadius: 0, overflow: 'hidden',
+      borderBottom: '1px solid #1a1a2e', position: 'relative',
+    }}>
+      <canvas
+        ref={canvasRef}
+        width={800}
+        height={300}
+        style={{ width: '100%', height: 300, display: 'block', imageRendering: 'pixelated' }}
+      />
+    </div>
   );
 }
 
@@ -657,7 +1001,11 @@ export default function DemoMode() {
 
       {/* ── MAIN CONTENT ──────────────────────────────────── */}
       {!error && !loadingConversations && totalConvos > 0 && !showSummary && (
-        <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+          {/* ── Pixel Art Demo Canvas ──────────────────────── */}
+          <DemoSceneCanvas phase={phase} conv={conv} currentIdx={currentIdx} />
+
+          <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
           {/* ── Conversation Stage ──────────────────────────── */}
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
 
@@ -938,6 +1286,7 @@ export default function DemoMode() {
                 </div>
               )}
             </div>
+          </div>
           </div>
         </div>
       )}

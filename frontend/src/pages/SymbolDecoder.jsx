@@ -1,7 +1,8 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import * as api from '../utils/api';
+import { ensureSprites, drawSprite, drawSpeechBubble, ParticleSystem, C as PC, SPRITE_NAMES } from '../utils/pixelEngine';
 
 const NUM_SYMBOLS = 20;
 const NUM_FEATURES = 8;
@@ -244,6 +245,139 @@ export default function SymbolDecoder() {
   const [usingDemo, setUsingDemo] = useState(false);
   const [hoveredCell, setHoveredCell] = useState(null);
   const [selectedSymbol, setSelectedSymbol] = useState(null);
+ 
+  /* ───── Pixel Art Symbol Workshop Canvas ───── */
+  const wsRef = useRef(null);
+  const wsPSRef = useRef(new ParticleSystem());
+  const wsRafRef = useRef(null);
+ 
+  useEffect(() => {
+    ensureSprites();
+    const canvas = wsRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    const ps = wsPSRef.current;
+    const W = canvas.width, H = canvas.height;
+ 
+    const draw = () => {
+      ctx.clearRect(0, 0, W, H);
+      ctx.fillStyle = PC.bg;
+      ctx.fillRect(0, 0, W, H);
+ 
+      // Workshop bench/table
+      ctx.fillStyle = '#2a2218';
+      ctx.fillRect(20, H - 30, W - 40, 20);
+      ctx.strokeStyle = '#4a3a28';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(20, H - 30, W - 40, 20);
+      // Bench top highlight
+      ctx.fillStyle = '#3a3228';
+      ctx.fillRect(20, H - 30, W - 40, 3);
+      // Tools on bench
+      ctx.fillStyle = '#666';
+      ctx.fillRect(50, H - 28, 3, 12); // tool 1
+      ctx.fillRect(60, H - 26, 8, 2); // tool 2
+      ctx.fillRect(W - 70, H - 27, 6, 8); // tool 3
+ 
+      // Floating symbols as colored shapes
+      const symbols = topSymbols.length > 0
+        ? topSymbols.map((s, i) => ({
+            name: `s${s.symbol}`,
+            x: 80 + i * (W - 160) / Math.max(1, topSymbols.length - 1),
+            y: 50 + Math.sin(Date.now() / 800 + i * 1.5) * 12,
+            color: [PC.green, PC.cyan, PC.amber, PC.purple, PC.red, PC.pink][i % 6],
+            size: 6 + (s.count || 0) * 0.5,
+          }))
+        : Array.from({ length: 5 }, (_, i) => ({
+            name: `s${i}`,
+            x: 100 + i * 150,
+            y: 50 + Math.sin(Date.now() / 800 + i * 1.5) * 12,
+            color: [PC.green, PC.cyan, PC.amber, PC.purple, PC.red][i],
+            size: 8,
+          }));
+ 
+      symbols.forEach((sym, i) => {
+        // Draw colored shape (symbol)
+        ctx.fillStyle = sym.color;
+        ctx.shadowColor = sym.color;
+        ctx.shadowBlur = 8;
+        const shapes = ['rect', 'circle', 'diamond'];
+        const shape = shapes[i % 3];
+        if (shape === 'rect') {
+          ctx.fillRect(sym.x - sym.size, sym.y - sym.size, sym.size * 2, sym.size * 2);
+        } else if (shape === 'circle') {
+          ctx.beginPath();
+          ctx.arc(sym.x, sym.y, sym.size, 0, Math.PI * 2);
+          ctx.fill();
+        } else {
+          ctx.beginPath();
+          ctx.moveTo(sym.x, sym.y - sym.size);
+          ctx.lineTo(sym.x + sym.size, sym.y);
+          ctx.lineTo(sym.x, sym.y + sym.size);
+          ctx.lineTo(sym.x - sym.size, sym.y);
+          ctx.closePath();
+          ctx.fill();
+        }
+        ctx.shadowBlur = 0;
+ 
+        // Symbol label
+        ctx.font = '8px JetBrains Mono, monospace';
+        ctx.textAlign = 'center';
+        ctx.fillStyle = sym.color;
+        ctx.fillText(sym.name, sym.x, sym.y + sym.size + 10);
+ 
+        // Connection lines to bench
+        ctx.strokeStyle = sym.color + '33';
+        ctx.lineWidth = 1;
+        ctx.setLineDash([3, 3]);
+        ctx.beginPath();
+        ctx.moveTo(sym.x, sym.y + sym.size);
+        ctx.lineTo(sym.x, H - 30);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      });
+ 
+      // Agent sprites walking between symbols
+      const agentCount = Math.min(3, SPRITE_NAMES.length);
+      for (let ai = 0; ai < agentCount; ai++) {
+        const t = (Date.now() / 2000 + ai * 1.5) % symbols.length;
+        const idx = Math.floor(t);
+        const frac = t - idx;
+        const nextIdx = Math.min(idx + 1, symbols.length - 1);
+        const ax = symbols[idx].x + (symbols[nextIdx].x - symbols[idx].x) * frac;
+        const ay = symbols[idx].y + 20;
+        const flip = nextIdx > idx;
+        drawSprite(ctx, SPRITE_NAMES[ai + 2], ax, ay, { scale: 1.0, flip, glow: symbols[idx % symbols.length].color });
+      }
+ 
+      // Ambient particles (data streams)
+      if (Math.random() < 0.08) {
+        ps.add({
+          x: Math.random() * W,
+          y: 20 + Math.random() * 20,
+          vx: (Math.random() - 0.5) * 8,
+          vy: 2 + Math.random() * 5,
+          color: [PC.cyan, PC.green, PC.amber][Math.floor(Math.random() * 3)],
+          size: 1 + Math.random(),
+          life: 2.5,
+          type: 'spark',
+        });
+      }
+ 
+      ps.update();
+      ps.draw(ctx);
+ 
+      // Title
+      ctx.font = '10px JetBrains Mono, monospace';
+      ctx.fillStyle = PC.green;
+      ctx.textAlign = 'left';
+      ctx.fillText('◈ SYMBOL WORKSHOP', 10, 16);
+ 
+      wsRafRef.current = requestAnimationFrame(draw);
+    };
+    draw();
+    return () => { if (wsRafRef.current) cancelAnimationFrame(wsRafRef.current); };
+  }, [topSymbols]);
 
   useEffect(() => {
     (async () => {
@@ -328,6 +462,11 @@ export default function SymbolDecoder() {
 
   return (
     <div style={{ position: 'relative', minHeight: '100vh' }}>
+      {/* Pixel Art Symbol Workshop */}
+      <div style={{ marginBottom: 20, borderRadius: 10, overflow: 'hidden', border: '1px solid rgba(85,85,125,0.2)', position: 'relative', zIndex: 1 }}>
+        <canvas ref={wsRef} width={800} height={180} style={{ width: '100%', display: 'block', imageRendering: 'pixelated' }} />
+      </div>
+
       {/* Floating particles */}
       <FloatingParticles />
 

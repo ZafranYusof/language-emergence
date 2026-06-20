@@ -1,7 +1,8 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { Eye, MousePointerClick, Wifi, WifiOff } from 'lucide-react';
 import * as api from '../utils/api';
+import { ensureSprites, drawSprite, ParticleSystem, C as PC, SPRITE_NAMES } from '../utils/pixelEngine';
 
 const NUM_POSITIONS = 5;
 const NUM_OBJECTS = 10;
@@ -13,6 +14,133 @@ export default function AgentAttention() {
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [loading, setLoading] = useState(false);
   const [connected, setConnected] = useState(false);
+ 
+  /* ───── Pixel Art Attention Spotlight Canvas ───── */
+  const spotRef = useRef(null);
+  const spotPSRef = useRef(new ParticleSystem());
+  const spotRafRef = useRef(null);
+ 
+  useEffect(() => {
+    ensureSprites();
+    const canvas = spotRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    const ps = spotPSRef.current;
+    const W = canvas.width, H = canvas.height;
+ 
+    const hasAttn = attentionWeights && attentionWeights.length > 0;
+    const numCandidates = hasAttn ? attentionWeights[0].length : NUM_OBJECTS;
+    const numPositions = hasAttn ? attentionWeights.length : NUM_POSITIONS;
+ 
+    const draw = () => {
+      ctx.clearRect(0, 0, W, H);
+      ctx.fillStyle = PC.bg;
+      ctx.fillRect(0, 0, W, H);
+ 
+      const centerX = W / 2;
+      const centerY = H / 2 + 10;
+      const objectRadius = W * 0.38;
+ 
+      // Draw objects around the perimeter
+      const objectColors = [PC.green, PC.cyan, PC.amber, PC.purple, PC.red, PC.pink, '#4488ff', '#ff8844', '#88ff44', '#44ffff'];
+      for (let i = 0; i < numCandidates; i++) {
+        const angle = (Math.PI * 2 * i / numCandidates) - Math.PI / 2;
+        const ox = centerX + Math.cos(angle) * objectRadius;
+        const oy = centerY + Math.sin(angle) * objectRadius * 0.5;
+        const color = objectColors[i % objectColors.length];
+ 
+        // Determine attention weight for this object
+        let attn = 0;
+        if (hasAttn) {
+          for (let p = 0; p < numPositions; p++) {
+            attn += (attentionWeights[p]?.[i] || 0);
+          }
+          attn /= numPositions;
+        }
+ 
+        // Pulsing glow on high-attention objects
+        const pulseSize = attn > 0.3 ? (Math.sin(Date.now() / 300 + i) * 2) : 0;
+ 
+        // Draw pixel art object (colored block)
+        const sz = 6 + pulseSize;
+        ctx.fillStyle = color;
+        ctx.shadowColor = color;
+        ctx.shadowBlur = attn > 0.3 ? 12 + pulseSize * 2 : 4;
+        ctx.fillRect(ox - sz, oy - sz, sz * 2, sz * 2);
+        ctx.shadowBlur = 0;
+ 
+        // Object label
+        ctx.font = '7px JetBrains Mono, monospace';
+        ctx.textAlign = 'center';
+        ctx.fillStyle = color;
+        ctx.fillText(`C${i}`, ox, oy + sz + 10);
+      }
+ 
+      // Draw spotlight beams from center to objects
+      for (let i = 0; i < numCandidates; i++) {
+        const angle = (Math.PI * 2 * i / numCandidates) - Math.PI / 2;
+        const ox = centerX + Math.cos(angle) * objectRadius;
+        const oy = centerY + Math.sin(angle) * objectRadius * 0.5;
+        const color = objectColors[i % objectColors.length];
+ 
+        let attn = 0;
+        if (hasAttn) {
+          for (let p = 0; p < numPositions; p++) {
+            attn += (attentionWeights[p]?.[i] || 0);
+          }
+          attn /= numPositions;
+        }
+ 
+        // Beam
+        ctx.strokeStyle = color;
+        ctx.globalAlpha = 0.05 + attn * 0.6;
+        ctx.lineWidth = 1 + attn * 3;
+        ctx.beginPath();
+        ctx.moveTo(centerX, centerY);
+        ctx.lineTo(ox, oy);
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+ 
+        // Particles along active beam
+        if (attn > 0.2 && Math.random() < 0.12) {
+          const t = Math.random();
+          ps.add({
+            x: centerX + (ox - centerX) * t,
+            y: centerY + (oy - centerY) * t,
+            vx: (Math.random() - 0.5) * 3,
+            vy: (Math.random() - 0.5) * 3,
+            color,
+            size: 1 + attn * 2,
+            life: 1.5,
+            type: 'firefly',
+          });
+        }
+      }
+ 
+      // Central agent sprite
+      const spriteIdx = (selectedIndex || 0) % SPRITE_NAMES.length;
+      drawSprite(ctx, SPRITE_NAMES[spriteIdx], centerX, centerY + 10, { scale: 1.4, glow: PC.cyan });
+ 
+      // Label
+      ctx.font = '8px JetBrains Mono, monospace';
+      ctx.textAlign = 'center';
+      ctx.fillStyle = PC.text;
+      ctx.fillText('LISTENER', centerX, centerY + 30);
+ 
+      ps.update();
+      ps.draw(ctx);
+ 
+      // Title
+      ctx.font = '10px JetBrains Mono, monospace';
+      ctx.fillStyle = PC.cyan;
+      ctx.textAlign = 'left';
+      ctx.fillText('◈ ATTENTION SPOTLIGHT', 10, 16);
+ 
+      spotRafRef.current = requestAnimationFrame(draw);
+    };
+    draw();
+    return () => { if (spotRafRef.current) cancelAnimationFrame(spotRafRef.current); };
+  }, [attentionWeights, selectedIndex]);
 
   useEffect(() => {
     (async () => {
@@ -61,6 +189,11 @@ export default function AgentAttention() {
 
   return (
     <div className="space-y-6 animate-slide-in">
+      {/* Pixel Art Attention Spotlight */}
+      <div style={{ marginBottom: 20, borderRadius: 10, overflow: 'hidden', border: '1px solid rgba(85,85,125,0.2)' }}>
+        <canvas ref={spotRef} width={800} height={200} style={{ width: '100%', display: 'block', imageRendering: 'pixelated' }} />
+      </div>
+
       <div>
         <h1 className="text-2xl font-bold flex items-center gap-2 section-header">
           <Eye size={24} className="text-cyber-cyan" />

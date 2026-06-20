@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import * as api from '../utils/api';
+import { ensureSprites, drawSprite, drawSpeechBubble, ParticleSystem, C as PC, SPRITE_NAMES, hashCoord } from '../utils/pixelEngine';
 
 /* ───── colour palette (retro robot theme) ───── */
 const C = {
@@ -333,6 +334,257 @@ function AgentPill({ agent, isActive, onClick }) {
   );
 }
 
+/* ───── Memory Landscape Canvas ───── */
+function MemoryLandscapeCanvas({ memories, selectedAgent }) {
+  const canvasRef = useRef(null);
+  const animRef = useRef(null);
+  const stateRef = useRef({
+    agents: [],
+    nodes: [],
+    particles: new ParticleSystem(),
+    fireflies: new ParticleSystem(),
+    t: 0,
+    spritesReady: false,
+  });
+
+  // Initialize agents & nodes
+  useEffect(() => {
+    ensureSprites().then(() => {
+      stateRef.current.spritesReady = true;
+    });
+    const s = stateRef.current;
+    // Agents walk in the landscape
+    s.agents = AGENTS.map((a, i) => ({
+      id: a.id, x: 80 + (i % 4) * 170, y: 140 + (i % 2) * 20,
+      vx: (Math.random() - 0.5) * 0.4, baseY: 140 + (i % 2) * 20,
+      bobPhase: Math.random() * Math.PI * 2,
+      sprite: a.id,
+    }));
+  }, []);
+
+  // Update nodes when memories change
+  useEffect(() => {
+    const s = stateRef.current;
+    const n = memories.length;
+    s.nodes = memories.map((m, i) => {
+      const angle = (2 * Math.PI * i) / Math.max(n, 1);
+      const radius = 120 + (i % 2) * 40;
+      return {
+        id: m.id,
+        x: 400 + radius * Math.cos(angle),
+        y: 80 + radius * Math.sin(angle) * 0.4,
+        content: m.content,
+        confidence: m.confidence || 0.5,
+        type: m.type,
+        connections: m.connections || [],
+        glow: 0,
+        litTime: 0,
+      };
+    });
+  }, [memories]);
+
+  // Animation loop
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+
+    const animate = () => {
+      const s = stateRef.current;
+      const W = 800, H = 200;
+      s.t += 0.016;
+
+      // Clear
+      ctx.clearRect(0, 0, W, H);
+
+      // Background gradient (night sky)
+      const bgGrad = ctx.createLinearGradient(0, 0, 0, H);
+      bgGrad.addColorStop(0, '#0a0a1a');
+      bgGrad.addColorStop(0.5, '#0d0d22');
+      bgGrad.addColorStop(1, '#1a1a2e');
+      ctx.fillStyle = bgGrad;
+      ctx.fillRect(0, 0, W, H);
+
+      // Terrain (rolling hills)
+      ctx.fillStyle = '#0d1a0d';
+      ctx.beginPath();
+      ctx.moveTo(0, H);
+      for (let x = 0; x <= W; x += 4) {
+        const y = 160 + Math.sin(x * 0.008 + s.t * 0.2) * 12 + Math.sin(x * 0.02) * 6;
+        ctx.lineTo(x, y);
+      }
+      ctx.lineTo(W, H);
+      ctx.closePath();
+      ctx.fill();
+
+      // Ground details (grass tufts)
+      ctx.fillStyle = '#1a3a1a';
+      for (let x = 0; x < W; x += 16) {
+        const h = hashCoord(x, 0);
+        const gy = 158 + Math.sin(x * 0.008 + s.t * 0.2) * 12 + Math.sin(x * 0.02) * 6;
+        ctx.fillRect(x, gy - h * 6, 2, h * 8);
+        ctx.fillRect(x + 3, gy - h * 4, 2, h * 6);
+      }
+
+      // Draw connection particle trails between nodes
+      s.nodes.forEach(node => {
+        (node.connections || []).forEach(targetId => {
+          const target = s.nodes.find(n => n.id === targetId);
+          if (!target) return;
+          // Add trail particles occasionally
+          if (Math.random() < 0.05) {
+            const midX = (node.x + target.x) / 2 + (Math.random() - 0.5) * 20;
+            const midY = (node.y + target.y) / 2 + (Math.random() - 0.5) * 10;
+            s.particles.add({
+              x: midX, y: midY, vx: (Math.random() - 0.5) * 10, vy: -Math.random() * 15,
+              color: PC.purple || '#aa66ff', size: 1.5, life: 1.5, type: 'spark', alpha: 0.6,
+            });
+          }
+          // Draw connection line
+          ctx.strokeStyle = 'rgba(170, 102, 255, 0.15)';
+          ctx.lineWidth = 1;
+          ctx.setLineDash([4, 4]);
+          ctx.beginPath();
+          ctx.moveTo(node.x, node.y);
+          ctx.lineTo(target.x, target.y);
+          ctx.stroke();
+          ctx.setLineDash([]);
+        });
+      });
+
+      // Draw memory nodes as glowing orbs
+      s.nodes.forEach(node => {
+        // Pulse glow
+        const pulse = 0.6 + Math.sin(s.t * 2 + node.x * 0.01) * 0.3;
+        const conf = node.confidence;
+        const orbColor = conf >= 0.8 ? '#00ff88' : conf >= 0.6 ? '#00ddff' : conf >= 0.4 ? '#ffaa00' : '#ff4444';
+
+        // Outer glow
+        const grad = ctx.createRadialGradient(node.x, node.y, 2, node.x, node.y, 18 + conf * 12);
+        grad.addColorStop(0, orbColor + '88');
+        grad.addColorStop(0.5, orbColor + '22');
+        grad.addColorStop(1, 'transparent');
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.arc(node.x, node.y, 18 + conf * 12, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Core orb
+        ctx.fillStyle = orbColor + 'cc';
+        ctx.beginPath();
+        ctx.arc(node.x, node.y, 5 + conf * 4, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Bright center
+        ctx.fillStyle = '#ffffff' + Math.round(pulse * 180).toString(16).padStart(2, '0');
+        ctx.beginPath();
+        ctx.arc(node.x, node.y, 2, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Decay glow
+        node.glow = Math.max(0, node.glow - 0.02);
+      });
+
+      // Firefly particles
+      if (Math.random() < 0.08) {
+        s.fireflies.add({
+          x: Math.random() * W, y: 40 + Math.random() * 120,
+          vx: (Math.random() - 0.5) * 20, vy: (Math.random() - 0.5) * 15,
+          color: Math.random() > 0.5 ? '#88ff88' : '#ffff88',
+          size: 1.5 + Math.random(), life: 3 + Math.random() * 2, type: 'firefly', alpha: 0.7,
+        });
+      }
+
+      // Update & draw particles
+      s.particles.update();
+      s.particles.draw(ctx);
+      s.fireflies.update();
+      s.fireflies.draw(ctx);
+
+      // Update & draw agents
+      s.agents.forEach((agent, i) => {
+        // Move agent
+        agent.x += agent.vx;
+        if (agent.x < 40 || agent.x > W - 40) agent.vx *= -1;
+        agent.x = Math.max(40, Math.min(W - 40, agent.x));
+
+        // Bob
+        const bob = Math.sin(s.t * 3 + agent.bobPhase) * 3;
+        const groundY = 160 + Math.sin(agent.x * 0.008 + s.t * 0.2) * 12 + Math.sin(agent.x * 0.02) * 6;
+        agent.y = groundY;
+
+        // Check proximity to memory nodes
+        let nearbyNode = null;
+        let minDist = 50;
+        s.nodes.forEach(node => {
+          const dx = agent.x - node.x;
+          const dy = agent.y - node.y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          if (dist < minDist) {
+            minDist = dist;
+            nearbyNode = node;
+          }
+        });
+
+        // Light up nearby node
+        if (nearbyNode) {
+          nearbyNode.glow = 1;
+          nearbyNode.litTime = Date.now();
+          // Show speech bubble with memory text
+          const bubbleText = nearbyNode.content.length > 30
+            ? nearbyNode.content.slice(0, 30) + '...'
+            : nearbyNode.content;
+          drawSpeechBubble(ctx, agent.x, agent.y - 40, bubbleText, {
+            color: '#00ff88', maxWidth: 160,
+          });
+        }
+
+        // Draw sprite
+        const spriteName = agent.sprite;
+        const flip = agent.vx < 0;
+        drawSprite(ctx, spriteName, agent.x, agent.y, {
+          scale: 1.2, bobY: bob, flip, alpha: 1,
+          glow: selectedAgent === agent.id ? '#00ff88' : null,
+        });
+
+        // Draw name tag
+        ctx.font = '8px JetBrains Mono, monospace';
+        ctx.fillStyle = selectedAgent === agent.id ? '#00ff88' : '#555577';
+        ctx.textAlign = 'center';
+        const ag = AGENTS.find(a => a.id === agent.id);
+        ctx.fillText(ag?.name || agent.id, agent.x, agent.y + 8);
+      });
+
+      // Label
+      ctx.font = '9px JetBrains Mono, monospace';
+      ctx.fillStyle = '#555577';
+      ctx.textAlign = 'left';
+      ctx.fillText('MEMORY LANDSCAPE', 10, 14);
+
+      animRef.current = requestAnimationFrame(animate);
+    };
+
+    animRef.current = requestAnimationFrame(animate);
+    return () => {
+      if (animRef.current) cancelAnimationFrame(animRef.current);
+    };
+  }, [selectedAgent]);
+
+  return (
+    <div style={{
+      marginBottom: 16, borderRadius: 8, overflow: 'hidden',
+      border: `1px solid #55557733`, position: 'relative',
+    }}>
+      <canvas
+        ref={canvasRef}
+        width={800}
+        height={200}
+        style={{ width: '100%', height: 200, display: 'block', imageRendering: 'pixelated' }}
+      />
+    </div>
+  );
+}
+
 /* ───── Main Component ───── */
 export default function MemoryVisualization({ sessionId }) {
   const [selectedAgent, setSelectedAgent] = useState('mage');
@@ -490,6 +742,9 @@ export default function MemoryVisualization({ sessionId }) {
           />
         ))}
       </div>
+
+      {/* Pixel Art Memory Landscape Canvas */}
+      <MemoryLandscapeCanvas memories={memories} selectedAgent={selectedAgent} />
 
       {/* Main content: Mind Map + Detail */}
       <div style={{ display: 'flex', gap: 20 }}>

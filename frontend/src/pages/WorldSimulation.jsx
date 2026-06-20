@@ -1131,7 +1131,7 @@ export default function WorldSimulation() {
     const render = () => {
       animFrameRef.current++;
       const w = worldRef.current;
-      if (w && spritesReady) {
+      if (w) {
         const now = Date.now();
         trailsRef.current = trailsRef.current.filter(t => now - t.time < 3000);
         floatingNumsRef.current = floatingNumsRef.current.filter(n => now - n.startTime < 2000);

@@ -606,6 +606,13 @@ function AppContent() {
         'l': 'language-evolution',
         's': 'agent-specialization',
         'g': 'social-dynamics',
+        'm': 'memory-viz',
+        'q': 'translation',
+        'n': 'narrator',
+        'i': 'neural-viz',
+        'w': 'world-sim',
+        'f': 'human-feedback',
+        'x': 'swarm',
       };
 
       if (pageMap[e.key]) {

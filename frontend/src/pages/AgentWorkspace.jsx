@@ -4,8 +4,8 @@ import { API_URL } from '../config';
 // ─── COLOR CONSTANTS ───────────────────────────────────────────
 const COLORS = {
   bg: '#0a0a1a',
-  floor1: '#1a1a2e',
-  floor2: '#16162a',
+  floor1: '#1e1e3a',
+  floor2: '#222240',
   border: '#00ff88',
   textPrimary: '#00ff88',
   textSecondary: '#ffaa00',
@@ -1272,6 +1272,7 @@ export default function AgentWorkspace() {
     };
   }));
   const [selIdx, setSelIdx] = useState(null);
+  const [levelUpNotifs, setLevelUpNotifs] = useState([]);
   const [log, setLog] = useState([]);
   const [tick, setTick] = useState(0);
   const [autonomousMode, setAutonomousMode] = useState(false);
@@ -1381,6 +1382,8 @@ export default function AgentWorkspace() {
     });
   }, []);
 
+  const doActionRef = useRef(null);
+
   // ── Perform a full action cycle for agent i ─────────────────
   const doAction = useCallback(async (i) => {
     // Prevent overlapping actions
@@ -1422,6 +1425,8 @@ export default function AgentWorkspace() {
       busyRef.current.delete(i);
     }
   }, [agents, addLog]);
+
+  doActionRef.current = doAction;
 
   // ── Solo action (non-collaborate) ───────────────────────────
   const doSoloAction = useCallback(async (i, act) => {
@@ -1601,6 +1606,8 @@ export default function AgentWorkspace() {
       // Log level ups and new badges
       if (leveledUp) {
         addLog(a.def.name, `⬆ LEVEL UP! Now LV${newLevel}`, null, '#ffaa00');
+        setLevelUpNotifs(prev => [...prev, { id: Date.now() + Math.random(), name: a.def.name, level: newLevel, x: a.state.x, y: a.state.y }]);
+        setTimeout(() => setLevelUpNotifs(prev => prev.slice(1)), 2500);
       }
       newBadges.forEach(badgeId => {
         const milestone = MILESTONES.find(m => m.id === badgeId);
@@ -1749,15 +1756,14 @@ export default function AgentWorkspace() {
     });
   }, [agents, addLog, walkTo]);
 
-  // auto-cycle: each agent acts every 5-8 s
+  // auto-cycle: each agent acts every 4-6 s
   useEffect(() => {
     agents.forEach((_, i) => {
-      const delay = 5000 + Math.random() * 3000;
-      // stagger initial actions
+      const delay = 4000 + Math.random() * 2000;
       const initial = setTimeout(() => {
-        doAction(i);
-        timers.current[i] = setInterval(() => doAction(i), delay);
-      }, i * 1200 + Math.random() * 2000);
+        doActionRef.current(i);
+        timers.current[i] = setInterval(() => doActionRef.current(i), delay);
+      }, i * 800 + Math.random() * 1000);
       timers.current[`init_${i}`] = initial;
     });
     return () => {
@@ -1826,7 +1832,20 @@ export default function AgentWorkspace() {
             backgroundColor: COLORS.floor1,
             overflow: 'hidden', margin: 8, borderRadius: 4,
             border: `1px solid ${COLORS.border}44`,
-          }}>
+            cursor: selIdx != null ? 'crosshair' : 'default',
+          }}
+          onClick={(e) => {
+            if (selIdx == null) return;
+            const rect = e.currentTarget.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+            if (!busyRef.current.has(selIdx)) {
+              const ag = agents[selIdx];
+              addLog(ag.def.name, 'Moving...', null, ag.def.color);
+              walkTo(selIdx, x, y, 1500);
+            }
+          }}
+        >
             {/* grid lines */}
             <div style={{
               position: 'absolute', inset: 0, pointerEvents: 'none',
@@ -1846,7 +1865,7 @@ export default function AgentWorkspace() {
             ].map((lbl, i) => (
               <div key={i} style={{
                 position: 'absolute', left: lbl.x, top: lbl.y,
-                fontSize: 7, color: '#334', fontFamily: '"Press Start 2P", monospace',
+                fontSize: 8, color: '#667', fontFamily: '"Press Start 2P", monospace',
                 pointerEvents: 'none', userSelect: 'none',
               }}>{lbl.label}</div>
             ))}
@@ -1893,7 +1912,7 @@ export default function AgentWorkspace() {
                     frame={tick + i * 3 + s.frame}
                     action={s.action}
                     direction={s.dir}
-                    scale={3}
+                    scale={4}
                     trait={dominantTrait(s.traits)}
                     level={s.level}
                     mood={s.mood}
@@ -1926,6 +1945,16 @@ export default function AgentWorkspace() {
                 </div>
               );
             })}
+
+            {/* level-up floating notifications */}
+            {levelUpNotifs.map(n => (
+              <div key={n.id} style={{
+                position: 'absolute', left: n.x, top: n.y - 30,
+                fontFamily: '"Press Start 2P", monospace', fontSize: 8,
+                color: '#ffaa00', textShadow: '0 0 8px #ffaa00',
+                animation: 'floatUp 2.5s ease-out forwards', pointerEvents: 'none', zIndex: 200,
+              }}>⬆ LV{n.level}!</div>
+            ))}
 
             {/* active count */}
             <div style={{
@@ -2012,6 +2041,10 @@ export default function AgentWorkspace() {
         @keyframes badgeGlow {
           0%,100%{transform: scale(1); opacity:0.8}
           50%{transform: scale(1.2); opacity:1}
+        }
+        @keyframes floatUp {
+          0%{opacity:1;transform:translateY(0)}
+          100%{opacity:0;transform:translateY(-40px)}
         }
       `}</style>
     </div>

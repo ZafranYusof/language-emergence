@@ -250,7 +250,26 @@ export default function SymbolDecoder() {
   const wsRef = useRef(null);
   const wsPSRef = useRef(new ParticleSystem());
   const wsRafRef = useRef(null);
- 
+
+  const { correlations, symbolCount, symbolPositions } = useMemo(
+    () => computeCorrelations(conversations),
+    [conversations]
+  );
+
+  const topSymbols = useMemo(() => {
+    return Object.entries(symbolCount)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 3)
+      .map(([sym, count]) => {
+        const corr = correlations[sym] || [];
+        const topFeatures = corr
+          .map((v, i) => ({ feature: FEATURE_NAMES[i], value: v }))
+          .sort((a, b) => Math.abs(b.value) - Math.abs(a.value))
+          .slice(0, 3);
+        return { symbol: sym, count, topFeatures };
+      });
+  }, [symbolCount, correlations]);
+
   useEffect(() => {
     ensureSprites();
     const canvas = wsRef.current;
@@ -258,12 +277,12 @@ export default function SymbolDecoder() {
     const ctx = canvas.getContext('2d');
     const ps = wsPSRef.current;
     const W = canvas.width, H = canvas.height;
- 
+
     const draw = () => {
       ctx.clearRect(0, 0, W, H);
       ctx.fillStyle = PC.bg;
       ctx.fillRect(0, 0, W, H);
- 
+
       // Workshop bench/table
       ctx.fillStyle = '#2a2218';
       ctx.fillRect(20, H - 30, W - 40, 20);
@@ -278,7 +297,7 @@ export default function SymbolDecoder() {
       ctx.fillRect(50, H - 28, 3, 12); // tool 1
       ctx.fillRect(60, H - 26, 8, 2); // tool 2
       ctx.fillRect(W - 70, H - 27, 6, 8); // tool 3
- 
+
       // Floating symbols as colored shapes
       const symbols = topSymbols.length > 0
         ? topSymbols.map((s, i) => ({
@@ -295,7 +314,7 @@ export default function SymbolDecoder() {
             color: [PC.green, PC.cyan, PC.amber, PC.purple, PC.red][i],
             size: 8,
           }));
- 
+
       symbols.forEach((sym, i) => {
         // Draw colored shape (symbol)
         ctx.fillStyle = sym.color;
@@ -409,31 +428,12 @@ export default function SymbolDecoder() {
     })();
   }, [selectedSession]);
 
-  const { correlations, symbolCount, symbolPositions } = useMemo(
-    () => computeCorrelations(conversations),
-    [conversations]
-  );
-
   const frequencyData = useMemo(() => {
     return Array.from({ length: NUM_SYMBOLS }, (_, i) => ({
       symbol: `s${i}`,
       count: symbolCount[i] || 0,
     }));
   }, [symbolCount]);
-
-  const topSymbols = useMemo(() => {
-    return Object.entries(symbolCount)
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 3)
-      .map(([sym, count]) => {
-        const corr = correlations[sym] || [];
-        const topFeatures = corr
-          .map((v, i) => ({ feature: FEATURE_NAMES[i], value: v }))
-          .sort((a, b) => Math.abs(b.value) - Math.abs(a.value))
-          .slice(0, 3);
-        return { symbol: sym, count, topFeatures };
-      });
-  }, [symbolCount, correlations]);
 
   const selectedSymbolData = useMemo(() => {
     if (selectedSymbol === null) return null;

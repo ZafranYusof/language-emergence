@@ -19,7 +19,12 @@ export default function AgentAttention() {
   const spotRef = useRef(null);
   const spotPSRef = useRef(new ParticleSystem());
   const spotRafRef = useRef(null);
- 
+
+  const selectedConv = conversations[selectedIndex];
+  // Real attention weights from backend: (message_length, num_candidates)
+  const attentionWeights = selectedConv?.attention_weights || null;
+  const hasRealAttention = attentionWeights && attentionWeights.length > 0;
+
   useEffect(() => {
     ensureSprites();
     const canvas = spotRef.current;
@@ -172,11 +177,6 @@ export default function AgentAttention() {
   useEffect(() => {
     fetchConversations();
   }, [fetchConversations]);
-
-  const selectedConv = conversations[selectedIndex];
-  // Real attention weights from backend: (message_length, num_candidates)
-  const attentionWeights = selectedConv?.attention_weights || null;
-  const hasRealAttention = attentionWeights && attentionWeights.length > 0;
 
   // Color: transparent -> cyber-cyan for attention
   const getColor = (value) => {

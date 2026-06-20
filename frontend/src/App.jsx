@@ -11,6 +11,7 @@ import {
  Bug,
 } from 'lucide-react';
 import Dashboard from './components/Dashboard';
+import ErrorBoundary from './components/ErrorBoundary';
 import LiveFeed from './components/LiveFeed';
 import LanguageAnalysis from './components/LanguageAnalysis';
 import EnvironmentEditor from './components/EnvironmentEditor';
@@ -840,7 +841,7 @@ function AppContent() {
                     <PageSkeleton pageId={activePage} />
                   </motion.div>
                 ) : (
-                  <PageContent activePage={activePage} props={pageProps} />
+                  <ErrorBoundary key={activePage}><PageContent activePage={activePage} props={pageProps} /></ErrorBoundary>
                 )}
               </motion.div>
             </AnimatePresence>

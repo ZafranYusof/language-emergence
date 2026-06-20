@@ -128,125 +128,11 @@ export default function MessageHeatmap() {
   const [hoveredCell, setHoveredCell] = useState(null);
   const [usingDemo, setUsingDemo] = useState(false);
  
-  /* ───── Pixel Art Heat Grid Canvas ───── */
+  /* ───── Pixel Art Heat Grid Canvas refs ───── */
   const gridRef = useRef(null);
   const gridPSRef = useRef(new ParticleSystem());
   const gridRafRef = useRef(null);
   const gridHoverRef = useRef(null);
- 
-  useEffect(() => {
-    ensureSprites();
-    const canvas = gridRef.current;
-    if (!canvas || !currentMatrix) return;
-    const ctx = canvas.getContext('2d');
-    const ps = gridPSRef.current;
-    const W = canvas.width, H = canvas.height;
-    const gridCols = NUM_SYMBOLS;
-    const gridRows = NUM_FEATURES;
-    const cellW = (W - 60) / gridCols;
-    const cellH = (H - 60) / gridRows;
-    const offX = 30, offY = 30;
- 
-    const draw = () => {
-      ctx.clearRect(0, 0, W, H);
-      ctx.fillStyle = PC.bg;
-      ctx.fillRect(0, 0, W, H);
- 
-      // Column labels (features)
-      ctx.font = '7px JetBrains Mono, monospace';
-      ctx.textAlign = 'center';
-      for (let c = 0; c < gridCols; c++) {
-        ctx.fillStyle = PC.dim;
-        ctx.fillText(`s${c}`, offX + c * cellW + cellW / 2, 12);
-      }
-      // Row labels (symbols)
-      ctx.textAlign = 'right';
-      for (let r = 0; r < gridRows; r++) {
-        ctx.fillStyle = PC.dim;
-        ctx.fillText(`f${r}`, offX - 4, offY + r * cellH + cellH / 2 + 3);
-      }
- 
-      // Grid cells
-      const hover = gridHoverRef.current;
-      for (let r = 0; r < gridRows; r++) {
-        for (let c = 0; c < gridCols; c++) {
-          const val = currentMatrix.normalized[c]?.[r] || 0;
-          const raw = currentMatrix.raw[c]?.[r] || 0;
-          const cx = offX + c * cellW;
-          const cy = offY + r * cellH;
- 
-          // Color by intensity
-          const intensity = val;
-          const gr = Math.round(intensity * 255);
-          const gg = Math.round(intensity * 180);
-          ctx.fillStyle = `rgba(${gr}, ${gg}, ${Math.round(100 + intensity * 100)}, ${0.15 + intensity * 0.85})`;
-          ctx.fillRect(cx + 1, cy + 1, cellW - 2, cellH - 2);
- 
-          // Pulse effect on hot cells
-          if (intensity > 0.6) {
-            const pulse = 0.3 + Math.sin(Date.now() / 300 + c + r) * 0.15;
-            ctx.fillStyle = `rgba(0, 255, 136, ${pulse})`;
-            ctx.fillRect(cx, cy, cellW, cellH);
-          }
- 
-          // Hover highlight
-          if (hover && hover.r === c && hover.c === r) {
-            ctx.strokeStyle = '#00ff88';
-            ctx.lineWidth = 2;
-            ctx.strokeRect(cx, cy, cellW, cellH);
-          }
-        }
-      }
- 
-      // Agents around the edges
-      for (let i = 0; i < Math.min(4, SPRITE_NAMES.length); i++) {
-        const positions = [
-          { x: offX + gridCols * cellW / 2, y: offY - 8 },
-          { x: offX + gridCols * cellW + 10, y: offY + gridRows * cellH / 2 },
-          { x: offX + gridCols * cellW / 2, y: offY + gridRows * cellH + 15 },
-          { x: offX - 15, y: offY + gridRows * cellH / 2 },
-        ];
-        const pos = positions[i];
-        drawSprite(ctx, SPRITE_NAMES[i], pos.x, pos.y, { scale: 0.9, glow: [PC.green, PC.cyan, PC.amber, PC.purple][i] });
-      }
- 
-      // Flowing particles along high-activity paths
-      if (Math.random() < 0.1) {
-        const hotCells = [];
-        for (let r = 0; r < gridRows; r++) {
-          for (let c = 0; c < gridCols; c++) {
-            if ((currentMatrix.normalized[c]?.[r] || 0) > 0.5) hotCells.push({ c, r });
-          }
-        }
-        if (hotCells.length > 0) {
-          const hc = hotCells[Math.floor(Math.random() * hotCells.length)];
-          ps.add({
-            x: offX + hc.c * cellW + cellW / 2,
-            y: offY + hc.r * cellH + cellH / 2,
-            vx: (Math.random() - 0.5) * 20,
-            vy: (Math.random() - 0.5) * 20,
-            color: '#00ff88',
-            size: 1.5,
-            life: 1.5,
-            type: 'firefly',
-          });
-        }
-      }
- 
-      ps.update();
-      ps.draw(ctx);
- 
-      // Title
-      ctx.font = '10px JetBrains Mono, monospace';
-      ctx.fillStyle = PC.cyan;
-      ctx.textAlign = 'left';
-      ctx.fillText('◈ PIXEL HEAT GRID', 10, H - 6);
- 
-      gridRafRef.current = requestAnimationFrame(draw);
-    };
-    draw();
-    return () => { if (gridRafRef.current) cancelAnimationFrame(gridRafRef.current); };
-  }, [currentMatrix]);
 
   // Temporal animation state
   const [rangeEnd, setRangeEnd] = useState(100); // percentage 0-100
@@ -301,6 +187,121 @@ export default function MessageHeatmap() {
 
   // Final matrix (100%) for ghost overlay
   const finalMatrix = useMemo(() => computeMatrix(sortedConversations), [sortedConversations]);
+
+  /* ───── Pixel Art Heat Grid Canvas ───── */
+  useEffect(() => {
+    ensureSprites();
+    const canvas = gridRef.current;
+    if (!canvas || !currentMatrix) return;
+    const ctx = canvas.getContext('2d');
+    const ps = gridPSRef.current;
+    const W = canvas.width, H = canvas.height;
+    const gridCols = NUM_SYMBOLS;
+    const gridRows = NUM_FEATURES;
+    const cellW = (W - 60) / gridCols;
+    const cellH = (H - 60) / gridRows;
+    const offX = 30, offY = 30;
+
+    const draw = () => {
+      ctx.clearRect(0, 0, W, H);
+      ctx.fillStyle = PC.bg;
+      ctx.fillRect(0, 0, W, H);
+
+      // Column labels (features)
+      ctx.font = '7px JetBrains Mono, monospace';
+      ctx.textAlign = 'center';
+      for (let c = 0; c < gridCols; c++) {
+        ctx.fillStyle = PC.dim;
+        ctx.fillText(`s${c}`, offX + c * cellW + cellW / 2, 12);
+      }
+      // Row labels (symbols)
+      ctx.textAlign = 'right';
+      for (let r = 0; r < gridRows; r++) {
+        ctx.fillStyle = PC.dim;
+        ctx.fillText(`f${r}`, offX - 4, offY + r * cellH + cellH / 2 + 3);
+      }
+
+      // Grid cells
+      const hover = gridHoverRef.current;
+      for (let r = 0; r < gridRows; r++) {
+        for (let c = 0; c < gridCols; c++) {
+          const val = currentMatrix.normalized[c]?.[r] || 0;
+          const raw = currentMatrix.raw[c]?.[r] || 0;
+          const cx = offX + c * cellW;
+          const cy = offY + r * cellH;
+
+          // Color by intensity
+          const intensity = val;
+          const gr = Math.round(intensity * 255);
+          const gg = Math.round(intensity * 180);
+          ctx.fillStyle = `rgba(${gr}, ${gg}, ${Math.round(100 + intensity * 100)}, ${0.15 + intensity * 0.85})`;
+          ctx.fillRect(cx + 1, cy + 1, cellW - 2, cellH - 2);
+
+          // Pulse effect on hot cells
+          if (intensity > 0.6) {
+            const pulse = 0.3 + Math.sin(Date.now() / 300 + c + r) * 0.15;
+            ctx.fillStyle = `rgba(0, 255, 136, ${pulse})`;
+            ctx.fillRect(cx, cy, cellW, cellH);
+          }
+
+          // Hover highlight
+          if (hover && hover.r === c && hover.c === r) {
+            ctx.strokeStyle = '#00ff88';
+            ctx.lineWidth = 2;
+            ctx.strokeRect(cx, cy, cellW, cellH);
+          }
+        }
+      }
+
+      // Agents around the edges
+      for (let i = 0; i < Math.min(4, SPRITE_NAMES.length); i++) {
+        const positions = [
+          { x: offX + gridCols * cellW / 2, y: offY - 8 },
+          { x: offX + gridCols * cellW + 10, y: offY + gridRows * cellH / 2 },
+          { x: offX + gridCols * cellW / 2, y: offY + gridRows * cellH + 15 },
+          { x: offX - 15, y: offY + gridRows * cellH / 2 },
+        ];
+        const pos = positions[i];
+        drawSprite(ctx, SPRITE_NAMES[i], pos.x, pos.y, { scale: 0.9, glow: [PC.green, PC.cyan, PC.amber, PC.purple][i] });
+      }
+
+      // Flowing particles along high-activity paths
+      if (Math.random() < 0.1) {
+        const hotCells = [];
+        for (let r = 0; r < gridRows; r++) {
+          for (let c = 0; c < gridCols; c++) {
+            if ((currentMatrix.normalized[c]?.[r] || 0) > 0.5) hotCells.push({ c, r });
+          }
+        }
+        if (hotCells.length > 0) {
+          const hc = hotCells[Math.floor(Math.random() * hotCells.length)];
+          ps.add({
+            x: offX + hc.c * cellW + cellW / 2,
+            y: offY + hc.r * cellH + cellH / 2,
+            vx: (Math.random() - 0.5) * 20,
+            vy: (Math.random() - 0.5) * 20,
+            color: '#00ff88',
+            size: 1.5,
+            life: 1.5,
+            type: 'firefly',
+          });
+        }
+      }
+
+      ps.update();
+      ps.draw(ctx);
+
+      // Title
+      ctx.font = '10px JetBrains Mono, monospace';
+      ctx.fillStyle = PC.cyan;
+      ctx.textAlign = 'left';
+      ctx.fillText('◈ PIXEL HEAT GRID', 10, H - 6);
+
+      gridRafRef.current = requestAnimationFrame(draw);
+    };
+    draw();
+    return () => { if (gridRafRef.current) cancelAnimationFrame(gridRafRef.current); };
+  }, [currentMatrix]);
 
   // Compositionality score for visible range
   const compositionalityScore = useMemo(

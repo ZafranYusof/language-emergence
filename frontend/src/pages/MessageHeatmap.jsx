@@ -137,7 +137,7 @@ export default function MessageHeatmap() {
   useEffect(() => {
     ensureSprites();
     const canvas = gridRef.current;
-    if (!canvas) return;
+    if (!canvas || !currentMatrix) return;
     const ctx = canvas.getContext('2d');
     const ps = gridPSRef.current;
     const W = canvas.width, H = canvas.height;

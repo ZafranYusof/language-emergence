@@ -184,13 +184,16 @@ export default function MessageHeatmap() {
 
   // Current matrix (up to rangeEnd%)
   const currentMatrix = useMemo(() => computeMatrix(visibleConversations), [visibleConversations]);
+  const currentMatrixRef = useRef(currentMatrix);
+  currentMatrixRef.current = currentMatrix;
 
   // Final matrix (100%) for ghost overlay
   const finalMatrix = useMemo(() => computeMatrix(sortedConversations), [sortedConversations]);
 
   /* ───── Pixel Art Heat Grid Canvas ───── */
+  useEffect(() => { ensureSprites(); }, []);
+
   useEffect(() => {
-    ensureSprites();
     const canvas = gridRef.current;
     if (!canvas || !currentMatrix) return;
     const ctx = canvas.getContext('2d');
@@ -225,8 +228,8 @@ export default function MessageHeatmap() {
       const hover = gridHoverRef.current;
       for (let r = 0; r < gridRows; r++) {
         for (let c = 0; c < gridCols; c++) {
-          const val = currentMatrix.normalized[c]?.[r] || 0;
-          const raw = currentMatrix.raw[c]?.[r] || 0;
+          const val = currentMatrixRef.current.normalized[c]?.[r] || 0;
+          const raw = currentMatrixRef.current.raw[c]?.[r] || 0;
           const cx = offX + c * cellW;
           const cy = offY + r * cellH;
 
@@ -301,7 +304,7 @@ export default function MessageHeatmap() {
     };
     draw();
     return () => { if (gridRafRef.current) cancelAnimationFrame(gridRafRef.current); };
-  }, [currentMatrix]);
+  }, []); // currentMatrix read from ref
 
   // Compositionality score for visible range
   const compositionalityScore = useMemo(

@@ -19,23 +19,32 @@ export default function AgentAttention() {
   const spotRef = useRef(null);
   const spotPSRef = useRef(new ParticleSystem());
   const spotRafRef = useRef(null);
+  const selectedIdxRef = useRef(selectedIndex);
+  selectedIdxRef.current = selectedIndex;
+  const attnRef = useRef(null);
 
-  const selectedConv = conversations[selectedIndex];
+  const selectedConv = conversations[Math.min(selectedIndex, Math.max(0, conversations.length - 1))];
   // Real attention weights from backend: (message_length, num_candidates)
   const attentionWeights = selectedConv?.attention_weights || null;
   const hasRealAttention = attentionWeights && attentionWeights.length > 0;
 
+  useEffect(() => { ensureSprites(); }, []);
+
+  // Update attention ref
+  const _selConv = conversations[Math.min(selectedIndex, Math.max(0, conversations.length - 1))];
+  attnRef.current = _selConv?.attention_weights || null;
+
   useEffect(() => {
-    ensureSprites();
     const canvas = spotRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     const ps = spotPSRef.current;
     const W = canvas.width, H = canvas.height;
  
-    const hasAttn = attentionWeights && attentionWeights.length > 0;
-    const numCandidates = hasAttn ? attentionWeights[0].length : NUM_OBJECTS;
-    const numPositions = hasAttn ? attentionWeights.length : NUM_POSITIONS;
+    const _attn = attnRef.current;
+    const hasAttn = _attn && _attn.length > 0;
+    const numCandidates = hasAttn ? _attn[0].length : NUM_OBJECTS;
+    const numPositions = hasAttn ? _attn.length : NUM_POSITIONS;
  
     const draw = () => {
       ctx.clearRect(0, 0, W, H);
@@ -145,7 +154,7 @@ export default function AgentAttention() {
     };
     draw();
     return () => { if (spotRafRef.current) cancelAnimationFrame(spotRafRef.current); };
-  }, [attentionWeights, selectedIndex]);
+  }, []); // attentionWeights/selectedIndex read from refs
 
   useEffect(() => {
     (async () => {

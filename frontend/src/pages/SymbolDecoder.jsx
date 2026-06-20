@@ -46,7 +46,7 @@ function computeCorrelations(conversations) {
 function generateDemoConversations() {
   const conversations = [];
   for (let i = 0; i < 200; i++) {
-    const features = Array.from({ length: NUM_FEATURES }, () => Math.random() * 2 - 1);
+    const features = Array.from({ length: NUM_FEATURES }, () => Math.random());
     const msgLen = 2 + Math.floor(Math.random() * 4);
     const message = [];
     for (let m = 0; m < msgLen; m++) {
@@ -396,7 +396,9 @@ export default function SymbolDecoder() {
     };
     draw();
     return () => { if (wsRafRef.current) cancelAnimationFrame(wsRafRef.current); };
-  }, [topSymbols]);
+  const topSymbolsRef = useRef(topSymbols);
+  topSymbolsRef.current = topSymbols;
+  }, []);
 
   useEffect(() => {
     (async () => {
@@ -414,18 +416,18 @@ export default function SymbolDecoder() {
 
   useEffect(() => {
     if (!selectedSession) return;
+    let cancelled = false;
     setLoading(true);
     (async () => {
       try {
         const data = await api.getConversations(selectedSession, 500);
-        setConversations(data);
-        setUsingDemo(false);
+        if (!cancelled) { setConversations(data); setUsingDemo(false); }
       } catch {
-        setConversations(generateDemoConversations());
-        setUsingDemo(true);
+        if (!cancelled) { setConversations(generateDemoConversations()); setUsingDemo(true); }
       }
-      setLoading(false);
+      if (!cancelled) setLoading(false);
     })();
+    return () => { cancelled = true; };
   }, [selectedSession]);
 
   const frequencyData = useMemo(() => {

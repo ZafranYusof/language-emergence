@@ -228,7 +228,17 @@ function DemoSceneCanvas({ phase, conv, currentIdx }) {
     prevPhase: 'idle',
     trees: [],
     waterBodies: [],
+    phase: 'idle',
+    conv: null,
+    currentIdx: 0,
   });
+
+  // Sync props to stateRef for canvas + phase timeouts
+  useEffect(() => {
+    stateRef.current.phase = phase;
+    stateRef.current.conv = conv;
+    stateRef.current.currentIdx = currentIdx;
+  }, [phase, conv, currentIdx]);
 
   useEffect(() => {
     ensureSprites();
@@ -537,7 +547,7 @@ function DemoSceneCanvas({ phase, conv, currentIdx }) {
     return () => {
       if (animRef.current) cancelAnimationFrame(animRef.current);
     };
-  }, [phase, conv, currentIdx]);
+  }, []); // phase/conv/currentIdx read from stateRef
 
   return (
     <div style={{
@@ -580,6 +590,8 @@ export default function DemoMode() {
   const timerRef = useRef(null);
 
   // ── Fetch sessions ──
+  const selectedSessionIdRef = useRef(selectedSessionId);
+  selectedSessionIdRef.current = selectedSessionId;
   const fetchSessions = useCallback(async () => {
     setLoadingSessions(true);
     setError(null);
@@ -589,7 +601,7 @@ export default function DemoMode() {
       const data = await res.json();
       const list = data.sessions || data || [];
       setSessions(list);
-      if (list.length > 0 && !selectedSessionId) {
+      if (list.length > 0 && !selectedSessionIdRef.current) {
         setSelectedSessionId(list[0].session_id);
       }
     } catch (err) {
@@ -597,7 +609,7 @@ export default function DemoMode() {
     } finally {
       setLoadingSessions(false);
     }
-  }, [selectedSessionId]);
+  }, []); // selectedSessionId read from ref
 
   // ── Fetch conversations ──
   const fetchConversations = useCallback(async (sessionId) => {
@@ -670,24 +682,26 @@ export default function DemoMode() {
     if (!timing) return;
 
     timerRef.current = setTimeout(() => {
+      const sConv = stateRef.current.conv;
+      const sIdx = stateRef.current.currentIdx;
       if (phase === 'object') {
         setPhase('speaker');
-        const desc = generateSpeakerDescription(conv.target_features, currentIdx);
+        const desc = generateSpeakerDescription(sConv?.target_features, sIdx);
         speak(`Speaker agent observes the target object. ${desc}`);
       } else if (phase === 'speaker') {
         setPhase('message');
-        const msgSymbols = Array.isArray(conv.message) ? conv.message.map(m => typeof m === 'number' ? `Symbol ${m}` : m) : [];
+        const msgSymbols = Array.isArray(sConv?.message) ? sConv.message.map(m => typeof m === 'number' ? `Symbol ${m}` : m) : [];
         speak(`Sending message: ${msgSymbols.join(', ')}`);
       } else if (phase === 'message') {
         setPhase('listener');
-        const interp = generateListenerInterpretation(conv.candidates_features?.[conv.listener_choice], conv.target_features, conv.correct, currentIdx);
+        const interp = generateListenerInterpretation(sConv?.candidates_features?.[sConv?.listener_choice], sConv?.target_features, sConv?.correct, sIdx);
         speak(`Listener interprets. ${interp}`);
       } else if (phase === 'listener') {
         setPhase('result');
-        speak(conv.correct ? 'Correct match! The listener identified the right object.' : 'Incorrect. The listener chose the wrong object.');
+        speak(sConv?.correct ? 'Correct match! The listener identified the right object.' : 'Incorrect. The listener chose the wrong object.');
       } else if (phase === 'result') {
-        setHistory(prev => [...prev, { ...conv, _episode: currentIdx + 1 }]);
-        if (currentIdx < totalConvos - 1) {
+        setHistory(prev => [...prev, { ...sConv, _episode: sIdx + 1 }]);
+        if (sIdx < totalConvos - 1) {
           setCurrentIdx(prev => prev + 1);
           setPhase('object');
         } else {

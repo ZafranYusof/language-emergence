@@ -408,7 +408,9 @@ export default function VoiceControls() {
     if (window.speechSynthesis) {
       window.speechSynthesis.onvoiceschanged = loadVoices;
     }
+    const fallback = setTimeout(() => setLoading(false), 3000);
     return () => {
+      clearTimeout(fallback);
       if (window.speechSynthesis) {
         window.speechSynthesis.onvoiceschanged = null;
       }
@@ -426,17 +428,17 @@ export default function VoiceControls() {
   // ─── Persist Settings ─────────────────────────────────────
   useEffect(() => {
     localStorage.setItem('voiceEnabled', String(voiceEnabled));
-    window.dispatchEvent(new Event('storage'));
+    window.dispatchEvent(new CustomEvent('voice-settings-changed', { detail: { key: 'voiceEnabled' } }));
   }, [voiceEnabled]);
 
   useEffect(() => {
     localStorage.setItem('voiceInputEnabled', String(voiceInputEnabled));
-    window.dispatchEvent(new Event('storage'));
+    window.dispatchEvent(new CustomEvent('voice-settings-changed', { detail: { key: 'voiceInputEnabled' } }));
   }, [voiceInputEnabled]);
 
   useEffect(() => {
     localStorage.setItem('selectedVoice', selectedVoice);
-    window.dispatchEvent(new Event('storage'));
+    window.dispatchEvent(new CustomEvent('voice-settings-changed', { detail: { key: 'selectedVoice' } }));
   }, [selectedVoice]);
 
   useEffect(() => {

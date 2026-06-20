@@ -164,9 +164,14 @@ export default function TrainingComparison() {
     return () => { mountedRef.current = false; };
   }, [fetchSessions]);
 
+  const failedIdsRef = useRef(new Set());
   useEffect(() => {
-    const missing = selected.filter(id => !details[id]);
-    if (missing.length > 0) fetchDetails(missing);
+    const missing = selected.filter(id => !details[id] && !failedIdsRef.current.has(id));
+    if (missing.length > 0) {
+      fetchDetails(missing).catch(() => {
+        missing.forEach(id => failedIdsRef.current.add(id));
+      });
+    }
   }, [selected, details, fetchDetails]);
 
   const toggleSelect = (id) => {

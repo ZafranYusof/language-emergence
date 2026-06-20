@@ -534,9 +534,7 @@ function MemoryLandscapeCanvas({ memories, selectedAgent }) {
           const bubbleText = nearbyNode.content.length > 30
             ? nearbyNode.content.slice(0, 30) + '...'
             : nearbyNode.content;
-          drawSpeechBubble(ctx, agent.x, agent.y - 40, bubbleText, {
-            color: '#00ff88', maxWidth: 160,
-          });
+          try { drawSpeechBubble(ctx, agent.x, agent.y - 40, bubbleText, { color: '#00ff88', maxWidth: 160 }); } catch {}
         }
 
         // Draw sprite

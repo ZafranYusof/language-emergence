@@ -475,17 +475,15 @@ export default function LanguageEvolution() {
   useEffect(() => {
     if (isPlaying) {
       playRef.current = setInterval(() => {
-        setEpoch((prev) => {
-          if (prev >= 59) {
-            setIsPlaying(false);
-            return 59;
-          }
-          return prev + 1;
-        });
+        setEpoch((prev) => prev >= 59 ? 59 : prev + 1);
       }, 200);
     }
     return () => { if (playRef.current) clearInterval(playRef.current); };
   }, [isPlaying]);
+
+  useEffect(() => {
+    if (epoch >= 59 && isPlaying) setIsPlaying(false);
+  }, [epoch, isPlaying]);
 
   const convergenceLines = [
     { key: 'convergence', color: C.green, label: 'Convergence' },

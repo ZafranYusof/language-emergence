@@ -191,25 +191,37 @@ function RateConversationsTab() {
   const [submitting, setSubmitting] = useState({});
 
   useEffect(() => {
+    var cancelled = false;
     fetch(API_URL + '/sessions')
-      .then(function(r) { return r.json(); })
+      .then(function(r) {
+        if (!r.ok) throw new Error('Failed to load sessions: ' + r.status);
+        return r.json();
+      })
       .then(function(d) {
+        if (cancelled) return;
         var list = d.sessions || [];
         setSessions(list);
         if (list.length > 0) setSelectedSession(list[0].session_id);
       })
       .catch(function() {
+        if (cancelled) return;
         setSessions([{ session_id: '1f7dbc63', name: 'Demo Session' }]);
         setSelectedSession('1f7dbc63');
       });
+    return function() { cancelled = true; };
   }, []);
 
   useEffect(function() {
     if (!selectedSession) return;
+    var cancelled = false;
     setLoading(true);
     fetch(API_URL + '/sessions/' + selectedSession + '/conversations?limit=20')
-      .then(function(r) { return r.json(); })
+      .then(function(r) {
+        if (!r.ok) throw new Error('Failed to load conversations: ' + r.status);
+        return r.json();
+      })
       .then(function(d) {
+        if (cancelled) return;
         var convos = (d.data || d.conversations || []).map(function(c, i) {
           return {
             conversation_id: 'conv_' + String(i).padStart(3, '0'),
@@ -223,6 +235,7 @@ function RateConversationsTab() {
         setConversations(convos);
       })
       .catch(function() {
+        if (cancelled) return;
         setConversations([
           { conversation_id: 'conv_001', episode: 100, target_index: 3, message: [7, 3, 0], reward: 1, listener_choice: 3 },
           { conversation_id: 'conv_002', episode: 150, target_index: 1, message: [11, 5, 2], reward: 0, listener_choice: 4 },
@@ -231,28 +244,41 @@ function RateConversationsTab() {
           { conversation_id: 'conv_005', episode: 300, target_index: 5, message: [22, 17, 5], reward: 0, listener_choice: 8 },
         ]);
       })
-      .finally(function() { setLoading(false); });
+      .finally(function() { if (!cancelled) setLoading(false); });
 
     fetch(API_URL + '/feedback/stats/' + selectedSession)
-      .then(function(r) { return r.json(); })
-      .then(function(d) { setStats(d); })
+      .then(function(r) {
+        if (!r.ok) throw new Error('Failed to load stats: ' + r.status);
+        return r.json();
+      })
+      .then(function(d) { if (!cancelled) setStats(d); })
       .catch(function() {});
 
     fetch(API_URL + '/feedback/history/' + selectedSession)
-      .then(function(r) { return r.json(); })
+      .then(function(r) {
+        if (!r.ok) throw new Error('Failed to load history: ' + r.status);
+        return r.json();
+      })
       .then(function(d) {
+        if (cancelled) return;
         var rMap = {};
         (d.ratings || []).forEach(function(r) { rMap[r.conversation_id] = r; });
         setRatings(function(prev) { return Object.assign({}, rMap, prev); });
       })
       .catch(function() {});
+    return function() { cancelled = true; };
   }, [selectedSession]);
 
   useEffect(function() {
+    var cancelled = false;
     fetch(API_URL + '/feedback/leaderboard')
-      .then(function(r) { return r.json(); })
-      .then(function(d) { setLeaderboard(d.leaderboard || []); })
+      .then(function(r) {
+        if (!r.ok) throw new Error('Failed to load leaderboard: ' + r.status);
+        return r.json();
+      })
+      .then(function(d) { if (!cancelled) setLeaderboard(d.leaderboard || []); })
       .catch(function() {});
+    return function() { cancelled = true; };
   }, []);
 
   var handleSubmitRating = useCallback(function(convId) {
@@ -271,13 +297,20 @@ function RateConversationsTab() {
         suggested_improvement: improvements[convId] || '',
       }),
     })
-    .then(function() {
+    .then(function(r) {
+      if (!r.ok) throw new Error('Rating submit failed: ' + r.status);
       return fetch(API_URL + '/feedback/stats/' + selectedSession);
     })
-    .then(function(r) { return r.json(); })
+    .then(function(r) {
+      if (!r.ok) throw new Error('Stats refresh failed: ' + r.status);
+      return r.json();
+    })
     .then(function(statsData) { setStats(statsData); })
     .then(function() { return fetch(API_URL + '/feedback/leaderboard'); })
-    .then(function(r) { return r.json(); })
+    .then(function(r) {
+      if (!r.ok) throw new Error('Leaderboard refresh failed: ' + r.status);
+      return r.json();
+    })
     .then(function(lbData) { setLeaderboard(lbData.leaderboard || []); })
     .catch(function(e) { console.error('Rating submit failed:', e); })
     .finally(function() {
@@ -492,7 +525,10 @@ function LanguageClassroomTab() {
   var refreshVocabulary = useCallback(function() {
     var url = API_URL + '/classroom/vocabulary' + (classroomId ? '?classroom_id=' + classroomId : '');
     fetch(url)
-      .then(function(r) { return r.json(); })
+      .then(function(r) {
+        if (!r.ok) throw new Error('Failed to load vocabulary: ' + r.status);
+        return r.json();
+      })
       .then(function(d) {
         setVocabulary(d.vocabulary || {});
         setLearningProgress(d.learning_progress || 0);

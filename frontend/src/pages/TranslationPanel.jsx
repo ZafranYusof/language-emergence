@@ -69,10 +69,11 @@ const CATEGORIES = {
 
 /* ───── Translation attempt generator ───── */
 function generateTranslationAttempts(symbol) {
+  const symbolNum = parseInt(symbol, 10) || 0;
   const attempts = [
-    { speaker_intent: 'Encode "red circle"', listener_decoded: 'Red shape', correct: true, episode: 42 },
-    { speaker_intent: 'Describe warm hue', listener_decoded: 'Color signal', correct: true, episode: 67 },
-    { speaker_intent: 'Indicate high saturation', listener_decoded: 'Brightness cue', correct: false, episode: 89 },
+    { speaker_intent: `Encode symbol ${symbol} as signal`, listener_decoded: `Decoded ${symbol} pattern`, correct: true, episode: 42 + symbolNum },
+    { speaker_intent: `Transmit ${symbol} meaning`, listener_decoded: `Interpreted ${symbol}`, correct: true, episode: 67 + symbolNum },
+    { speaker_intent: `Map ${symbol} to feature`, listener_decoded: `Feature mismatch`, correct: false, episode: 89 + symbolNum },
   ];
   return attempts;
 }
@@ -391,35 +392,46 @@ export default function TranslationPanel({ sessionId }) {
   const [searchTerm, setSearchTerm] = useState('');
 
   useEffect(() => {
+    let cancelled = false;
     api.fetchSessions().then(s => {
+      if (cancelled) return;
       setSessions(s);
       if (!activeSession && s.length > 0) setActiveSession(s[0].id);
     }).catch(() => {});
+    return () => { cancelled = true; };
   }, []);
 
   // Try to fetch real vocab data, fall back to synthetic
+  const [usingDemoData, setUsingDemoData] = useState(false);
   useEffect(() => {
     if (!activeSession) return;
+    let cancelled = false;
     setLoading(true);
     api.getVocabulary(activeSession).then(data => {
+      if (cancelled) return;
       if (data?.vocabulary?.length > 0) {
         const mapped = data.vocabulary.map((v, i) => ({
           symbol: String(v.symbol || v.id || i),
           meaning_en: v.meaning || v.human_label || `Symbol ${v.symbol}`,
           meaning_ms: v.meaning_ms || `Simbol ${v.symbol}`,
-          confidence: v.confidence || v.accuracy || 0.5 + Math.random() * 0.4,
-          frequency: v.frequency || v.count || Math.floor(Math.random() * 80 + 10),
+          confidence: v.confidence || v.accuracy || 0.5 + ((v.symbol || i) * 0.037 % 0.4),
+          frequency: v.frequency || v.count || Math.floor(((v.symbol || i) * 73 + 17) % 80 + 10),
           category: v.category || ['color', 'size', 'shape', 'opacity'][i % 4],
         }));
         setMappings(mapped);
+        setUsingDemoData(false);
       } else {
         setMappings(SYNTHETIC_MAPPINGS);
+        setUsingDemoData(true);
       }
       setLoading(false);
     }).catch(() => {
+      if (cancelled) return;
       setMappings(SYNTHETIC_MAPPINGS);
+      setUsingDemoData(true);
       setLoading(false);
     });
+    return () => { cancelled = true; };
   }, [activeSession]);
 
   // Filter mappings
@@ -490,6 +502,17 @@ export default function TranslationPanel({ sessionId }) {
           </div>
         </div>
       </div>
+
+      {/* Demo data banner */}
+      {usingDemoData && (
+        <div style={{
+          background: `${C.amber}15`, border: `1px solid ${C.amber}44`, borderRadius: 4,
+          padding: '8px 14px', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8,
+          fontFamily: 'JetBrains Mono, monospace', fontSize: 11, color: C.amber,
+        }}>
+          <span>⚠</span> Using demo data — connect to a live session for real symbol mappings.
+        </div>
+      )}
 
       {/* Session Selector */}
       {sessions.length > 0 && (

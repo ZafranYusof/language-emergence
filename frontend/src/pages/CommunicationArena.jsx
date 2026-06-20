@@ -744,7 +744,10 @@ export default function CommunicationArena({ sessionId }) {
     }
     setIsDemo(false);
     fetch(`${API_URL}/sessions/${sessionId}/conversations?limit=50`)
-      .then(r => r.json())
+      .then(r => {
+        if (!r.ok) throw new Error('Failed to load conversations: ' + r.status);
+        return r.json();
+      })
       .then(data => {
         const raw = Array.isArray(data) ? data : (data?.data || data?.conversations || []);
         const convs = raw.map(normalizeConversation);
@@ -808,7 +811,14 @@ export default function CommunicationArena({ sessionId }) {
       setStep('speaking');
       setTimeout(() => setStep('flying'), 500);
       setTimeout(() => setStep('listening'), 1500);
-      setTimeout(() => setStep('result'), 2000);
+      setTimeout(() => {
+        setCurrentIdx(ci => {
+          const conv = conversations[ci];
+          setShowResult(conv?.correct ? 'correct' : 'wrong');
+          return ci;
+        });
+        setStep('result');
+      }, 2000);
       setTimeout(() => { setShowResult(null); setStep('idle'); }, 2800);
     }, 3000);
     return () => clearInterval(timerRef.current);

@@ -499,7 +499,7 @@ export default function NeuralVisualizer({ sessionId }) {
       }
     } catch (err) {
       console.error('Failed to fetch neural data:', err);
-      setError('Failed to fetch data');
+      setError('Failed to fetch data: ' + (err.message || 'Unknown error'));
     } finally {
       setLoading(false);
     }
@@ -535,7 +535,7 @@ export default function NeuralVisualizer({ sessionId }) {
     let ws;
     try {
       const proto = window.location.protocol === 'https:' ? 'wss' : 'ws';
-      const wsUrl = `${proto}://${window.location.host}/api/neural/ws/neural/${effectiveSessionId}`;
+      const wsUrl = `${proto}://${window.location.host}/ws/neural/${effectiveSessionId}`;
       ws = new WebSocket(wsUrl);
       ws.onmessage = (event) => {
         try {
@@ -570,9 +570,15 @@ export default function NeuralVisualizer({ sessionId }) {
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
   }, [autoCapture, captureSpeed, triggerCapture]);
 
+  const neuronTimeoutRef = useRef(null);
+  useEffect(() => {
+    return () => { if (neuronTimeoutRef.current) clearTimeout(neuronTimeoutRef.current); };
+  }, []);
+
   const handleSelectNeuron = useCallback((info) => {
+    if (neuronTimeoutRef.current) clearTimeout(neuronTimeoutRef.current);
     setSelectedNeuron(info);
-    setTimeout(() => setSelectedNeuron(null), 4000);
+    neuronTimeoutRef.current = setTimeout(() => setSelectedNeuron(null), 4000);
   }, []);
 
   const allLayers = useMemo(() => {

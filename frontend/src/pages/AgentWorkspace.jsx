@@ -1280,6 +1280,9 @@ export default function AgentWorkspace() {
   const timers = useRef({});
   const positionsRef = useRef({});
   const busyRef = useRef(new Set()); // track busy agent indices
+  const agentsRef = useRef(agents);
+  agentsRef.current = agents;
+  const walkIntervalsRef = useRef([]); // track walk intervals for cleanup
 
   // Initialize positions ref from initial state
   useEffect(() => {
@@ -1292,6 +1295,14 @@ export default function AgentWorkspace() {
   useEffect(() => {
     const t = setInterval(() => setTick(f => f + 1), 250);
     return () => clearInterval(t);
+  }, []);
+
+  // Cleanup walk intervals on unmount
+  useEffect(() => {
+    return () => {
+      walkIntervalsRef.current.forEach(id => clearInterval(id));
+      walkIntervalsRef.current = [];
+    };
   }, []);
 
   // load pixel font
@@ -1379,6 +1390,7 @@ export default function AgentWorkspace() {
           resolve();
         }
       }, stepDuration);
+      walkIntervalsRef.current.push(interval);
     });
   }, []);
 

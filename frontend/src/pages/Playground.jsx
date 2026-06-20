@@ -177,10 +177,13 @@ export default function Playground({ sessionId }) {
   const [activeSession, setActiveSession] = useState(sessionId);
 
   useEffect(() => {
+    let cancelled = false;
     api.fetchSessions().then(s => {
+      if (cancelled) return;
       setSessions(s);
       if (!activeSession && s.length > 0) setActiveSession(s[0].id);
     }).catch(() => {});
+    return () => { cancelled = true; };
   }, []);
 
   const handleEncode = async () => {
@@ -188,6 +191,7 @@ export default function Playground({ sessionId }) {
     setLoading(true);
     try {
       const res = await fetch(`${API_URL}/sessions/${activeSession}/conversations?limit=200`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       const convs = Array.isArray(data) ? data : [];
       // Find closest matching conversation
@@ -208,15 +212,16 @@ export default function Playground({ sessionId }) {
     setLoading(true);
     try {
       const res = await fetch(`${API_URL}/sessions/${activeSession}/conversations?limit=200`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       const convs = Array.isArray(data) ? data : [];
-      const symbols = inputSymbols.map(Number);
+      const symbols = inputSymbols.map(s => String(s));
       // Find conversation with closest matching message
       let bestMatch = null;
       let bestScore = -1;
       convs.forEach(c => {
         if (!c.message) return;
-        const cSyms = c.message.map(Number);
+        const cSyms = c.message.map(s => String(s));
         let match = 0;
         symbols.forEach((s,i) => { if (i < cSyms.length && s === cSyms[i]) match++; });
         if (match > bestScore) { bestScore = match; bestMatch = c; }

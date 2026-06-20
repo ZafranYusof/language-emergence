@@ -250,6 +250,7 @@ function NetworkGraph({ agents, relationships, selectedNode, onSelectNode, hover
               width={28} height={42}
               style={{ imageRendering: 'pixelated', pointerEvents: 'none' }}
               clipPath={`circle(${nodeR}px at ${14}px ${20}px)`}
+              onError={(e) => { e.target.style.display = 'none'; }}
             />
             {/* Name label */}
             <rect x={agent.x - 24} y={agent.y + nodeR + 4} width={48} height={14}

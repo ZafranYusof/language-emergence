@@ -139,7 +139,10 @@ export default function LiveFeed({ conversations, isConnected, isTraining }) {
   useEffect(() => {
     if (!autoSpeak || !('speechSynthesis' in window)) return;
     if (conversations.length > prevConvCountRef.current && conversations.length > 0) {
-      const latest = conversations[0]; // newest first
+      // Find the conversation with the highest episode number (newest)
+      const latest = conversations.reduce((newest, conv) => {
+        return (conv.episode || 0) > (newest.episode || 0) ? conv : newest;
+      }, conversations[0]);
       if (latest) {
         const thought = latest.thought_before || '';
         const symbols = (latest.message || []).join(' ');

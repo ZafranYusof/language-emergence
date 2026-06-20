@@ -1049,6 +1049,7 @@ export default function WorldSimulation() {
   const animFrameRef = useRef(0);
   const frameRef = useRef(null);
   const [spritesLoaded, setSpritesLoaded] = useState(false);
+  const spritesLoadedRef = useRef(false);
 
   // Tooltip state
   const tooltipRef = useRef(null);
@@ -1061,7 +1062,10 @@ export default function WorldSimulation() {
 
   // Load sprites on mount
   useEffect(() => {
-    ensureSprites().then(() => setSpritesLoaded(true));
+    ensureSprites().then(() => {
+      setSpritesLoaded(true);
+      spritesLoadedRef.current = true;
+    });
   }, []);
 
   // Keep selectedAgentRef in sync
@@ -1129,6 +1133,10 @@ export default function WorldSimulation() {
     const ctx = canvasRef.current.getContext('2d');
 
     const render = () => {
+      if (!spritesLoadedRef.current) {
+        frameRef.current = requestAnimationFrame(render);
+        return;
+      }
       animFrameRef.current++;
       const w = worldRef.current;
       if (w) {
@@ -1137,6 +1145,11 @@ export default function WorldSimulation() {
         floatingNumsRef.current = floatingNumsRef.current.filter(n => now - n.startTime < 2000);
         particlesRef.current = particlesRef.current.filter(p => now - p.time < p.life * 1000);
         speechBubblesRef.current = speechBubblesRef.current.filter(b => now - b.startTime < 4000);
+        // Cap arrays to prevent unbounded growth
+        if (trailsRef.current.length > 500) trailsRef.current = trailsRef.current.slice(-500);
+        if (particlesRef.current.length > 500) particlesRef.current = particlesRef.current.slice(-500);
+        if (floatingNumsRef.current.length > 500) floatingNumsRef.current = floatingNumsRef.current.slice(-500);
+        if (speechBubblesRef.current.length > 500) speechBubblesRef.current = speechBubblesRef.current.slice(-500);
 
         // Ambient particles
         const dayNight = getDayNightPhase(w);
@@ -1226,49 +1239,75 @@ export default function WorldSimulation() {
 
     frameRef.current = requestAnimationFrame(render);
     return () => { if (frameRef.current) cancelAnimationFrame(frameRef.current); };
-  }, [spritesLoaded]);
+  }, []);
 
   // ── API handlers ──
   const handleStart = async () => {
-    await fetch(`${API_URL}/world/start`, { method: 'POST' });
-    setRunning(true);
-    fetchState();
+    try {
+      const res = await fetch(`${API_URL}/world/start`, { method: 'POST' });
+      if (!res.ok) throw new Error(`${res.status}`);
+      setRunning(true);
+      fetchState();
+    } catch (e) {
+      setError(`Failed to start: ${e.message}`);
+    }
   };
 
   const handleStop = async () => {
-    await fetch(`${API_URL}/world/stop`, { method: 'POST' });
-    setRunning(false);
-    fetchState();
+    try {
+      const res = await fetch(`${API_URL}/world/stop`, { method: 'POST' });
+      if (!res.ok) throw new Error(`${res.status}`);
+      setRunning(false);
+      fetchState();
+    } catch (e) {
+      setError(`Failed to stop: ${e.message}`);
+    }
   };
 
   const handleReset = async () => {
-    await fetch(`${API_URL}/world/reset`, { method: 'POST' });
-    setSelectedAgent(null);
-    agentSpritesRef.current = {};
-    trailsRef.current = [];
-    floatingNumsRef.current = [];
-    particlesRef.current = [];
-    speechBubblesRef.current = [];
-    fetchState();
+    try {
+      const res = await fetch(`${API_URL}/world/reset`, { method: 'POST' });
+      if (!res.ok) throw new Error(`${res.status}`);
+      setSelectedAgent(null);
+      agentSpritesRef.current = {};
+      trailsRef.current = [];
+      floatingNumsRef.current = [];
+      particlesRef.current = [];
+      speechBubblesRef.current = [];
+      fetchState();
+    } catch (e) {
+      setError(`Failed to reset: ${e.message}`);
+    }
   };
 
   const handleTick = async () => {
-    await fetch(`${API_URL}/world/tick`, { method: 'POST' });
-    fetchState();
+    try {
+      const res = await fetch(`${API_URL}/world/tick`, { method: 'POST' });
+      if (!res.ok) throw new Error(`${res.status}`);
+      fetchState();
+    } catch (e) {
+      setError(`Failed to tick: ${e.message}`);
+    }
   };
 
   const handleSpeedChange = async (val) => {
-    setTickSpeed(val);
-    await fetch(`${API_URL}/world/config`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ tick_speed: val }),
-    });
+    try {
+      const res = await fetch(`${API_URL}/world/config`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tick_speed: val }),
+      });
+      if (!res.ok) throw new Error(`${res.status}`);
+      setTickSpeed(val);
+    } catch (e) {
+      setError(`Failed to change speed: ${e.message}`);
+    }
   };
 
   // ── Camera controls ──
   const handleWheel = useCallback((e) => {
     e.preventDefault();
+    if (!canvasRef.current) return;
     const cam = cameraRef.current;
     const rect = canvasRef.current.getBoundingClientRect();
     const mouseX = (e.clientX - rect.left) * (CANVAS / rect.width);
@@ -1291,6 +1330,7 @@ export default function WorldSimulation() {
   }, [handleWheel]);
 
   const handleMouseDown = useCallback((e) => {
+    if (!canvasRef.current) return;
     // Check minimap click
     const rect = canvasRef.current.getBoundingClientRect();
     const scaleX = CANVAS / rect.width;
@@ -1321,6 +1361,7 @@ export default function WorldSimulation() {
   }, []);
 
   const handleMouseMove = useCallback((e) => {
+    if (!canvasRef.current) return;
     const cam = cameraRef.current;
     if (!cam.dragging) {
       // Hover tooltip
@@ -1360,6 +1401,7 @@ export default function WorldSimulation() {
   }, []);
 
   const handleCanvasClick = useCallback((e) => {
+    if (!canvasRef.current) return;
     if (minimapClickRef.current) return;
     const cam = cameraRef.current;
     if (cam.moved) return;
@@ -1389,6 +1431,7 @@ export default function WorldSimulation() {
   // Right-click for cell info
   const handleContextMenu = useCallback((e) => {
     e.preventDefault();
+    if (!canvasRef.current) return;
     const cam = cameraRef.current;
     const rect = canvasRef.current.getBoundingClientRect();
     const screenX = (e.clientX - rect.left) * (CANVAS / rect.width);
@@ -1413,7 +1456,7 @@ export default function WorldSimulation() {
     });
   }, []);
 
-  if (loading) return <LoadingSkeleton />;
+  if (loading) return typeof LoadingSkeleton !== 'undefined' ? <LoadingSkeleton /> : <div style={{ padding: 20, color: C.dim }}>Loading...</div>;
 
   const selAgent = world?.agents.find(a => a.agent_id === selectedAgent);
   const totalEnergy = world?.agents.reduce((s, a) => s + (a.alive ? a.energy : 0), 0) || 0;

@@ -83,6 +83,15 @@ function SwarmIntelligence() {
     };
   }, [running, swarmId, fetchStatus, fetchKnowledge]);
 
+  // Cleanup swarm on unmount
+  useEffect(() => {
+    return () => {
+      if (swarmId) {
+        fetch(`${API_URL}/swarm/stop?swarm_id=${swarmId}`, { method: 'POST' }).catch(() => {});
+      }
+    };
+  }, [swarmId]);
+
   // Spawn particles for knowledge flow animation
   useEffect(() => {
     if (!running) return;

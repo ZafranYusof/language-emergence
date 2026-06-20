@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { GitCompare, Download, Trophy, TrendingUp, BookOpen, Layers, Activity, Wind } from 'lucide-react';
 import {
@@ -50,6 +50,7 @@ export default function SessionComparison() {
   const [metricsB, setMetricsB] = useState(null);
   const [loading, setLoading] = useState(false);
   const [usingDemo, setUsingDemo] = useState(false);
+  const [selectedMetric, setSelectedMetric] = useState('reward');
 
   useEffect(() => {
     (async () => {
@@ -70,23 +71,27 @@ export default function SessionComparison() {
     })();
   }, []);
 
+  const latestReqRef = useRef(0);
   const fetchMetrics = useCallback(async () => {
     if (!sessionA || !sessionB) return;
+    const reqId = ++latestReqRef.current;
     setLoading(true);
     try {
       const [mA, mB] = await Promise.all([
         api.getMetrics(sessionA),
         api.getMetrics(sessionB),
       ]);
+      if (reqId !== latestReqRef.current) return;
       setMetricsA(mA);
       setMetricsB(mB);
       setUsingDemo(false);
     } catch {
+      if (reqId !== latestReqRef.current) return;
       setMetricsA(generateDemoMetrics(sessionA));
       setMetricsB(generateDemoMetrics(sessionB));
       setUsingDemo(true);
     } finally {
-      setLoading(false);
+      if (reqId === latestReqRef.current) setLoading(false);
     }
   }, [sessionA, sessionB]);
 
@@ -101,18 +106,25 @@ export default function SessionComparison() {
     return metrics.summary?.[key] ?? metrics[key + 's']?.[metrics[key + 's']?.length - 1] ?? null;
   };
 
+  const metricKey = selectedMetric;
+  const metricPlural = metricKey === 'vocab_size' ? 'vocabSizes' : metricKey + 's';
   const chartData = (() => {
     if (!metricsA || !metricsB) return [];
     const episodes = metricsA.episodes || [];
     return episodes.map((ep, i) => ({
       episode: ep,
-      rewardA: metricsA.rewards?.[i] ?? null,
-      rewardB: metricsB.rewards?.[i] ?? null,
+      [`${metricKey}A`]: metricsA[metricPlural]?.[i] ?? metricsA.summary?.[metricKey] ?? null,
+      [`${metricKey}B`]: metricsB[metricPlural]?.[i] ?? metricsB.summary?.[metricKey] ?? null,
     }));
   })();
 
   const exportCSV = () => {
     if (!metricsA || !metricsB) return;
+    const csvEscape = (val) => {
+      const s = String(val ?? '');
+      return s.includes(',') || s.includes('"') || s.includes('\n')
+        ? `"${s.replace(/"/g, '""')}"` : s;
+    };
     const rows = [['Metric', `Session A (${sessionA})`, `Session B (${sessionB})`, 'Winner']];
     METRICS.forEach(m => {
       const valA = getLatest(metricsA, m.key);
@@ -120,7 +132,7 @@ export default function SessionComparison() {
       const winner = valA != null && valB != null
         ? (m.higherBetter ? (valA > valB ? 'A' : 'B') : (valA < valB ? 'A' : 'B'))
         : '—';
-      rows.push([m.label, valA ?? '—', valB ?? '—', winner]);
+      rows.push([m.label, valA ?? '—', valB ?? '—', winner].map(csvEscape));
     });
     const csv = rows.map(r => r.join(',')).join('\n');
     const blob = new Blob([csv], { type: 'text/csv' });
@@ -249,7 +261,16 @@ export default function SessionComparison() {
       {/* Overlay Chart */}
       {metricsA && metricsB && chartData.length > 0 && (
         <div className="retro-card rounded-xl p-6">
-          <h3 className="text-sm font-medium text-retro-muted mb-4">Reward Over Episodes</h3>
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-sm font-medium text-retro-muted">Metric Over Episodes</h3>
+            <select
+              value={selectedMetric}
+              onChange={e => setSelectedMetric(e.target.value)}
+              className="bg-retro-bg border border-steel-border rounded-lg px-2 py-1 text-xs text-retro-text focus:border-neon-green focus:outline-none"
+            >
+              {METRICS.map(m => <option key={m.key} value={m.key}>{m.label}</option>)}
+            </select>
+          </div>
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={chartData} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
@@ -270,11 +291,11 @@ export default function SessionComparison() {
                 />
                 <Legend wrapperStyle={{ fontSize: 12 }} />
                 <Line
-                  type="monotone" dataKey="rewardA" name={`A: ${sessionName(sessionA)}`}
+                  type="monotone" dataKey={`${metricKey}A`} name={`A: ${sessionName(sessionA)}`}
                   stroke="#00ff88" strokeWidth={2} dot={false}
                 />
                 <Line
-                  type="monotone" dataKey="rewardB" name={`B: ${sessionName(sessionB)}`}
+                  type="monotone" dataKey={`${metricKey}B`} name={`B: ${sessionName(sessionB)}`}
                   stroke="#ffaa00" strokeWidth={2} dot={false}
                 />
               </LineChart>

@@ -492,13 +492,15 @@ function EmotionOscilloscope({ speaker, listener }) {
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas || history.length < 2) return;
-    const ctx = canvas.getContext('2d');
-    const w = canvas.width, h = canvas.height;
-    const pad = { top: 10, bottom: 20, left: 30, right: 10 };
-    ctx.clearRect(0, 0, w, h);
+    const rafId = requestAnimationFrame(() => {
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+      const w = canvas.width, h = canvas.height;
+      const pad = { top: 10, bottom: 20, left: 30, right: 10 };
+      ctx.clearRect(0, 0, w, h);
 
-    // Grid
-    ctx.strokeStyle = `${C.dim}33`; ctx.lineWidth = 0.5;
+      // Grid
+      ctx.strokeStyle = `${C.dim}33`; ctx.lineWidth = 0.5;
     for (let i = 0; i <= 4; i++) {
       const y = pad.top + ((h - pad.top - pad.bottom) / 4) * i;
       ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(w - pad.right, y); ctx.stroke();
@@ -538,6 +540,8 @@ function EmotionOscilloscope({ speaker, listener }) {
     };
     drawLine(history.map(p => p.speaker[selectedEmotion] || 0), C.cyan);
     drawLine(history.map(p => p.listener[selectedEmotion] || 0), C.amber);
+    });
+    return () => cancelAnimationFrame(rafId);
   }, [history, selectedEmotion]);
 
   return (
@@ -791,7 +795,7 @@ function AgentCard({ agent, name, icon, color }) {
     curiosity: personality?.curiosity ?? 0.5,
     sociability: personality?.sociability ?? 0.5,
   };
-  const initialPersonality = useRef(radarPersonality);
+  const initialPersonality = useRef(radarPersonality); // useRef is valid here: AgentCard is a React component
   const traits = ['creativity', 'precision', 'patience', 'curiosity', 'sociability'];
 
   return (
@@ -977,10 +981,10 @@ function normalizeMindsData(raw) {
   return {
     speaker, listener,
     relationship: {
-      trust_level: sRel.trust ?? 0,
-      compatibility: ((sRel.success_rate ?? 0) + (lRel.success_rate ?? 0)) / 2,
-      speaker_to_listener: sRel.judgment || { category: 'unknown', score: 0 },
-      listener_to_speaker: lRel.judgment || { category: 'unknown', score: 0 },
+    trust_level: sRel.trust ?? 0,
+    compatibility: ((sRel.success_rate ?? 0) + (lRel.success_rate ?? 0)) / 2,
+    speaker_to_listener: sRel.judgment ? { quality: sRel.judgment.category || 'unknown', score: sRel.judgment.score || 0 } : { quality: 'unknown', score: 0 },
+    listener_to_speaker: lRel.judgment ? { quality: lRel.judgment.category || 'unknown', score: lRel.judgment.score || 0 } : { quality: 'unknown', score: 0 },
     },
     recent_interactions: raw.recent_interactions ?? 0,
   };

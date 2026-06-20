@@ -45,11 +45,15 @@ function layoutTree(tree) {
   const depthCounts = {};
   const depthChildren = {};
 
-  // First pass: compute subtree sizes
-  function subtreeSize(id) {
-    const snap = snapshots[id];
-    if (!snap || !snap.children || snap.children.length === 0) return 1;
-    return snap.children.reduce((sum, cid) => sum + subtreeSize(cid), 0);
+  const subtreeSizeCache = new Map();
+   // First pass: compute subtree sizes
+   function subtreeSize(id) {
+     if (subtreeSizeCache.has(id)) return subtreeSizeCache.get(id);
+     const snap = snapshots[id];
+     if (!snap || !snap.children || snap.children.length === 0) { subtreeSizeCache.set(id, 1); return 1; }
+     const size = snap.children.reduce((sum, cid) => sum + subtreeSize(cid), 0);
+     subtreeSizeCache.set(id, size);
+     return size;
   }
 
   // Assign positions using a simple layered approach
@@ -107,12 +111,13 @@ function layoutTree(tree) {
     });
   }
 
+  const nodeMap = new Map(nodes.map(n => [n.id, n]));
   // Build edges
   for (const node of nodes) {
     const snap = node.snap;
     if (snap.children) {
       for (const cid of snap.children) {
-        const childNode = nodes.find(n => n.id === cid);
+        const childNode = nodeMap.get(cid);
         if (childNode) {
           edges.push({
             from: node,
@@ -127,9 +132,9 @@ function layoutTree(tree) {
 
   // Branch edges
   const branchEdges = (tree.branches || []).map(b => {
-    const parentNode = nodes.find(n => n.id === b.parent_id);
-    const childA = nodes.find(n => n.id === b.child_a_id);
-    const childB = nodes.find(n => n.id === b.child_b_id);
+    const parentNode = nodeMap.get(b.parent_id);
+    const childA = nodeMap.get(b.child_a_id);
+    const childB = nodeMap.get(b.child_b_id);
     return { ...b, parentNode, childA, childB };
   });
 
@@ -154,7 +159,7 @@ export default function PhylogeneticTree() {
   const [speed, setSpeed] = useState(1);
   const [showMutations, setShowMutations] = useState(true);
   const playRef = useRef(null);
-  const [snapshotsSorted, setSnapshotsSorted] = useState([]);
+  const snapshotsSorted = useMemo(() => tree?.snapshots ? Object.values(tree.snapshots).sort((a, b) => a.timestamp - b.timestamp) : [], [tree]);
 
   /* ─── load sessions ─── */
   useEffect(() => {
@@ -175,21 +180,20 @@ export default function PhylogeneticTree() {
     if (!selectedSession) return;
     setLoading(true);
     try {
-      const [treeData, mutData, diaData] = await Promise.all([
+      const [treeResult, mutResult, diaResult] = await Promise.allSettled([
         api.fetchPhyloTree(selectedSession),
         api.fetchPhyloMutations(selectedSession),
         api.fetchPhyloDialects(selectedSession),
       ]);
+      const treeData = treeResult.status === 'fulfilled' ? treeResult.value : null;
+      const mutData = mutResult.status === 'fulfilled' ? mutResult.value : { mutations: [] };
+      const diaData = diaResult.status === 'fulfilled' ? diaResult.value : null;
+      if (!treeData) throw new Error('Failed to fetch tree data');
       setTree(treeData);
       setMutations(mutData.mutations || []);
       setDialects(diaData);
 
-      // Sort snapshots by timestamp
-      if (treeData.snapshots) {
-        const sorted = Object.values(treeData.snapshots).sort((a, b) => a.timestamp - b.timestamp);
-        setSnapshotsSorted(sorted);
-        setTimeIdx(sorted.length - 1);
-      }
+      // setTimeIdx will be derived from snapshotsSorted
     } catch (err) {
       console.error('Failed to fetch phylogenetic data:', err);
       setTree(null);
@@ -556,7 +560,6 @@ export default function PhylogeneticTree() {
               const py = br.parentNode.y + br.parentNode.h + 15;
               return (
                 <g key={`branch-${i}`} opacity={isVisible ? 0.8 : 0.1}>
-                  <GitBranch size={10} />
                   <text
                     x={px} y={py}
                     textAnchor="middle" fill={COL.purple}

@@ -12,10 +12,11 @@ function useAnimatedValue(target, duration = 600) {
   const rafRef = useRef(null);
   const startRef = useRef(null);
   const fromRef = useRef(target);
+  const displayRef = useRef(target);
 
   useEffect(() => {
-    if (target === display) return;
-    fromRef.current = display;
+    if (target === displayRef.current) return;
+    fromRef.current = displayRef.current;
     startRef.current = null;
 
     const animate = (ts) => {
@@ -23,6 +24,7 @@ function useAnimatedValue(target, duration = 600) {
       const progress = Math.min((ts - startRef.current) / duration, 1);
       const eased = 1 - Math.pow(1 - progress, 3); // ease-out cubic
       const val = fromRef.current + (target - fromRef.current) * eased;
+      displayRef.current = val;
       setDisplay(val);
       if (progress < 1) rafRef.current = requestAnimationFrame(animate);
     };
@@ -46,7 +48,7 @@ function Sparkline({ data, width = 80, height = 24, color }) {
   }).join(' ');
   const trendColor = data[data.length - 1] >= data[0] ? '#00ff88' : '#ff4444';
   const stroke = color || trendColor;
-  const gradientId = `spark-${Math.random().toString(36).slice(2, 8)}`;
+  const gradientId = useMemo(() => `spark-${Math.random().toString(36).slice(2, 8)}`, []);
   return (
     <svg width={width} height={height} style={{ display: 'block', marginTop: 4 }}>
       <defs>
@@ -134,13 +136,6 @@ function ParticleField() {
 // ─── Training Pulse Bar ─────────────────────────────────────────────────
 function TrainingPulseBar({ episodes }) {
   const total = episodes?.length || 0;
-  // Animate a sweep that loops every few seconds when training
-  const [sweep, setSweep] = useState(0);
-  useEffect(() => {
-    const id = setInterval(() => setSweep(s => (s + 1) % 101), 60);
-    return () => clearInterval(id);
-  }, []);
-
   return (
     <div style={{
       width: '100%', height: 4, borderRadius: 2, background: 'rgba(0,255,136,0.08)',
@@ -340,7 +335,6 @@ function TrainingReplay({ conversations, metrics }) {
       intervalRef.current = setInterval(() => {
         setCurrentEpisode(prev => {
           if (prev >= maxIdx) {
-            setIsPlaying(false);
             return maxIdx;
           }
           return prev + 1;
@@ -351,6 +345,13 @@ function TrainingReplay({ conversations, metrics }) {
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
   }, [isPlaying, speed, maxIdx]);
+
+  // Stop playback when reaching the end
+  useEffect(() => {
+    if (isPlaying && currentEpisode >= maxIdx) {
+      setIsPlaying(false);
+    }
+  }, [currentEpisode, maxIdx, isPlaying]);
 
   // Flash metric on episode change
   useEffect(() => {
@@ -627,7 +628,7 @@ function TrainingReplay({ conversations, metrics }) {
 // ═════════════════════════════════════════════════════════════════════════
 // ─── DASHBOARD ──────────────────────────────────────────────────────────
 // ═════════════════════════════════════════════════════════════════════════
-export default function Dashboard({ sessions, metrics, conversations, isTraining, onSelectSession, onCreateSession, onStartTraining }) {
+export default function Dashboard({ sessions = [], metrics = {}, conversations = [], isTraining, onSelectSession, onCreateSession, onStartTraining }) {
   const [quickStarting, setQuickStarting] = useState(false);
   const [loading, setLoading] = useState(false);
   useKeyframes();

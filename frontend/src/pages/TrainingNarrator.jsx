@@ -725,6 +725,10 @@ export default function TrainingNarrator({ sessionId }) {
     synthRef.current = window.speechSynthesis;
   }, []);
 
+  // Ref to avoid stale closure on episode
+  const episodeRef = useRef(episode);
+  episodeRef.current = episode;
+
   const speak = useCallback((text) => {
     if (!isSpeaking || !synthRef.current) return;
     synthRef.current.cancel();
@@ -738,9 +742,10 @@ export default function TrainingNarrator({ sessionId }) {
 
   // Generate events
   const generateNextEvent = useCallback(() => {
+    let shouldIncEpisode = false;
     setStep(prev => {
       const nextStep = prev + 1;
-      const newEvent = generateEvent(episode, nextStep);
+      const newEvent = generateEvent(episodeRef.current, nextStep);
       setEvents(prevEvents => {
         const updated = [...prevEvents, newEvent];
         return updated.slice(-200); // Keep last 200 events
@@ -753,22 +758,33 @@ export default function TrainingNarrator({ sessionId }) {
 
       // Episode boundary
       if (nextStep >= 12) {
-        setEpisode(ep => ep + 1);
+        shouldIncEpisode = true;
         return 0;
       }
       return nextStep;
     });
-  }, [episode, speak]);
+    if (shouldIncEpisode) {
+      setEpisode(ep => ep + 1);
+    }
+  }, [speak]);
 
   // Auto-play
   useEffect(() => {
     if (isRunning) {
-      intervalRef.current = setInterval(generateNextEvent, 1500 + Math.random() * 1000);
+      // Use recursive setTimeout for truly random intervals
+      const scheduleNext = () => {
+        const delay = 1500 + Math.random() * 1000;
+        intervalRef.current = setTimeout(() => {
+          generateNextEvent();
+          scheduleNext();
+        }, delay);
+      };
+      scheduleNext();
     } else {
-      if (intervalRef.current) clearInterval(intervalRef.current);
+      if (intervalRef.current) clearTimeout(intervalRef.current);
     }
     return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current);
+      if (intervalRef.current) clearTimeout(intervalRef.current);
     };
   }, [isRunning, generateNextEvent]);
 

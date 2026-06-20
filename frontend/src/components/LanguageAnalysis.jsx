@@ -178,12 +178,14 @@ function InteractiveSymbolMap({ messageFrequency, symbolUsage, onSymbolClick }) 
   const [dragging, setDragging] = useState(null);
   const [hoverNode, setHoverNode] = useState(null);
   const simRef = useRef(null);
-
+  const edgesRef = useRef([]);
+  const rafIdRef = useRef(null);
   useEffect(() => {
     const { nodes: n, edges: e } = buildNetworkData(messageFrequency, symbolUsage);
     if (n.length === 0) return;
     setNodes(n);
     setEdges(e);
+    edgesRef.current = e;
     setSelectedNode(null);
 
     // Force simulation
@@ -221,7 +223,7 @@ function InteractiveSymbolMap({ messageFrequency, symbolUsage, onSymbolClick }) 
           }
         }
         // Edge attraction
-        for (const e of edges) {
+        for (const e of edgesRef.current) {
           const si = ns.findIndex(n => n.id === e.source);
           const ti = ns.findIndex(n => n.id === e.target);
           if (si < 0 || ti < 0) continue;
@@ -247,10 +249,10 @@ function InteractiveSymbolMap({ messageFrequency, symbolUsage, onSymbolClick }) 
         }
         return ns;
       });
-      requestAnimationFrame(step);
+      rafIdRef.current = requestAnimationFrame(step);
     };
-    requestAnimationFrame(step);
-    return () => { sim.running = false; };
+    rafIdRef.current = requestAnimationFrame(step);
+    return () => { sim.running = false; if (rafIdRef.current) cancelAnimationFrame(rafIdRef.current); };
   }, [messageFrequency, symbolUsage]);
 
   const handlePointerDown = useCallback((e, id) => {
@@ -699,10 +701,14 @@ function SymbolDeepDive({ symbolId, messageFrequency, symbolUsage, history, onCl
   // Discovery episode
   const discoveryEpisode = useMemo(() => {
     if (!messageFrequency) return 0;
-    let idx = 0;
-    for (const msg of Object.keys(messageFrequency)) {
-      if (msg.split(/[\s,]+/).includes(symbolId)) return idx;
-      idx++;
+    const entries = Object.entries(messageFrequency);
+    for (const [msg, count] of entries) {
+      if (msg.split(/[\s,]+/).includes(symbolId)) {
+        // Extract episode from message key if possible, otherwise use count as proxy
+        const epMatch = msg.match(/ep(?:isode)?[\s:]*(\d+)/i);
+        if (epMatch) return parseInt(epMatch[1], 10);
+        return count; // fallback: use total count as a proxy for "how early"
+      }
     }
     return 0;
   }, [messageFrequency, symbolId]);

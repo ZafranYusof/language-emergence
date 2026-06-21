@@ -3,6 +3,9 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Radio, Check, X, Clock, Wifi, WifiOff, Search, Filter, SlidersHorizontal } from 'lucide-react';
 import SymbolVisualizer from './SymbolVisualizer';
 import VoiceControls from './VoiceControls';
+import Card from './Card';
+import SectionTitle from './SectionTitle';
+import EmptyState from './EmptyState';
 import { getSymbolColor, stringToColorIndex } from '../utils/colors';
 
 // ─── ObjectVisual: renders a colored shape from a feature array ───
@@ -215,7 +218,8 @@ export default function LiveFeed({ conversations, isConnected, isTraining }) {
       <VoiceControls autoSpeak={autoSpeak} onAutoSpeakChange={setAutoSpeak} />
 
       {/* Search & Filter Bar */}
-      <div className="retro-card rounded-xl p-4 space-y-3">
+      <Card accent="#00ddff" padding={16}>
+      <div className="space-y-3">
         <div className="flex items-center gap-3">
           <div className="relative flex-1">
             <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-retro-muted" />
@@ -326,6 +330,7 @@ export default function LiveFeed({ conversations, isConnected, isTraining }) {
           </div>
         )}
       </div>
+      </Card>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Conversation Stream */}
@@ -595,19 +600,11 @@ export default function LiveFeed({ conversations, isConnected, isTraining }) {
             </AnimatePresence>
 
             {filteredConversations.length === 0 && conversations.length > 0 && (
-              <div className="text-center text-retro-muted py-12">
-                <Search size={32} className="mx-auto mb-3 text-retro-muted" />
-                <p>No conversations match your filters</p>
-                <p className="text-xs text-retro-muted mt-1">Try adjusting your search criteria</p>
-              </div>
+              <EmptyState icon="🔍" message="No conversations match your filters" hint="Try adjusting your search criteria" />
             )}
 
             {conversations.length === 0 && (
-              <div className="text-center text-retro-muted py-12">
-                <Radio size={32} className="mx-auto mb-3 text-retro-muted" />
-                <p>Waiting for conversations...</p>
-                <p className="text-xs text-retro-muted mt-1">Start training to see live agent communication</p>
-              </div>
+              <EmptyState icon="📡" message="Waiting for conversations..." hint="Start training to see live agent communication" />
             )}
           </div>
         </div>
@@ -617,7 +614,7 @@ export default function LiveFeed({ conversations, isConnected, isTraining }) {
           <h3 className="text-sm font-medium text-retro-muted">Symbol Frequency</h3>
           <div className="bg-steel-dark rounded-lg p-4 border border-steel-border">
             {Object.keys(symbolFreq).length === 0 ? (
-              <p className="text-retro-muted text-sm">No symbols observed yet</p>
+              <EmptyState icon="📊" message="No symbols observed yet" hint="Symbols will appear as agents communicate" />
             ) : (
               <div className="space-y-2">
                 {Object.entries(symbolFreq)

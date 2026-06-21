@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion';
 import { API_URL } from '../config';
 import { ensureSprites, drawSprite, drawSpeechBubble, ParticleSystem, C as PC, SPRITE_NAMES, hashCoord } from '../utils/pixelEngine';
+import EmptyCanvas from '../components/EmptyCanvas';
 
 // ─── COLOR CONSTANTS ───────────────────────────────────────────
 const C = {
@@ -1003,14 +1004,7 @@ export default function DemoMode() {
 
       {/* ── NO CONVERSATIONS STATE ────────────────────────── */}
       {!error && !loadingConversations && sessions.length > 0 && totalConvos === 0 && (
-        <div style={{
-          flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
-          flexDirection: 'column', gap: 16,
-        }}>
-          <div style={{ fontSize: 48 }}>📭</div>
-          <div style={{ color: C.muted, fontSize: 14, letterSpacing: 1 }}>No conversations recorded</div>
-          <div style={{ color: '#555', fontSize: 11 }}>This session has no conversations yet. Train the agents first.</div>
-        </div>
+        <EmptyCanvas title="No conversations recorded" subtitle="This session has no conversations yet — train the agents first" icon="💬" />
       )}
 
       {/* ── MAIN CONTENT ──────────────────────────────────── */}

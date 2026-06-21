@@ -15,6 +15,7 @@ import {
 import Dashboard from './components/Dashboard';
 import ErrorBoundary from './components/ErrorBoundary';
 import LoadingScreen from './components/LoadingScreen';
+import PageTransition from './components/PageTransition';
 
 /* Lazy imports (code-split: loaded on demand) */
 const LiveFeed = React.lazy(() => import('./components/LiveFeed'));
@@ -78,6 +79,18 @@ const NAV_ITEMS = [
   { id: 'world-sim', label: 'World Sim', icon: Gamepad2, shortcut: 'w' },
   { id: 'human-feedback', label: 'Human Feedback', icon: MessageSquare, shortcut: 'f' },
   { id: 'swarm', label: 'Swarm Intel', icon: Bug, shortcut: 'x' },
+];
+
+/* ──────────────────────────── Sidebar Groups ──────────────────────────── */
+
+const SIDEBAR_GROUPS = [
+  { id: 'dashboard', items: ['dashboard'] },
+  { id: 'analysis', label: 'Analysis', items: ['live', 'analysis', 'comparison', 'heatmap', 'phylogeny', 'attention'] },
+  { id: 'agents', label: 'Agents', items: ['arena', 'decoder', 'playground', 'minds', 'workspace'] },
+  { id: 'simulation', label: 'Simulation', items: ['editor', 'world-sim', 'swarm'] },
+  { id: 'tools', label: 'Tools', items: ['replay', 'desktop', 'demo-mode', 'voice-controls', 'neural-viz'] },
+  { id: 'evolution', label: 'Evolution', items: ['training-comparison', 'language-evolution', 'agent-specialization', 'social-dynamics', 'memory-viz'] },
+  { id: 'feedback', label: 'Feedback', items: ['translation', 'narrator', 'human-feedback'] },
 ];
 
 /* ──────────────────────────── Transition presets ──────────────────────────── */
@@ -523,6 +536,13 @@ function AppContent() {
   const lastPageRef = useRef(activePage);
   const toastIdRef = useRef(0);
 
+  // Sidebar group collapse state (persisted to localStorage)
+  const [collapsedGroups, setCollapsedGroups] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem('sidebar-collapsed-groups') || '{}');
+    } catch { return {}; }
+  });
+
   const { theme, toggleTheme } = useTheme();
   const { toast: originalToast } = useToast();
 
@@ -641,6 +661,24 @@ function AppContent() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [activeSession, isTraining, startSession, stopSession, toast]);
 
+  // Persist collapsed groups to localStorage
+  useEffect(() => {
+    localStorage.setItem('sidebar-collapsed-groups', JSON.stringify(collapsedGroups));
+  }, [collapsedGroups]);
+
+  // Auto-expand active item's group
+  useEffect(() => {
+    const groupId = SIDEBAR_GROUPS.find(g => g.items.includes(activePage))?.id;
+    if (groupId) {
+      setCollapsedGroups(prev => {
+        if (prev[groupId]) {
+          return { ...prev, [groupId]: false };
+        }
+        return prev;
+      });
+    }
+  }, [activePage]);
+
   // Auto-collapse sidebar on mobile
   useEffect(() => {
     const handleResize = () => {
@@ -694,58 +732,98 @@ function AppContent() {
           </div>
 
           {/* Navigation */}
-          <nav className="flex-1 p-2 space-y-1 overflow-y-auto scroll-fade-container" style={{ '--fade-color': '#141428', position: 'relative', zIndex: 50 }}>
-            {NAV_ITEMS.map((item) => {
-              const isActive = activePage === item.id;
-              const NavButton = (
-                <button
-                  key={item.id}
-                  onClick={() => setActivePage(item.id)}
-                  className={`
-                    w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm
-                    nav-item-glow relative
-                    ${isActive
-                      ? 'text-neon-green bg-neon-green/5 nav-active-accent'
-                      : 'text-retro-muted hover:text-neon-green'
-                    }
-                  `}
-                >
-                  <item.icon
-                    size={18}
-                    className={`flex-shrink-0 transition-colors duration-200 ${
-                      isActive ? 'text-neon-green' : 'text-retro-muted group-hover:text-neon-green'
-                    }`}
-                  />
-                  {isActive && !sidebarCollapsed && <span className="led-dot ml-[-4px]" />}
-                  <AnimatePresence>
-                    {!sidebarCollapsed && (
-                      <motion.span
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        exit={{ opacity: 0 }}
-                        className="whitespace-nowrap"
-                      >
-                        {item.label}
-                      </motion.span>
-                    )}
-                  </AnimatePresence>
-                  {/* Keyboard shortcut hint */}
-                  {!sidebarCollapsed && item.shortcut && (
-                    <span className="ml-auto text-retro-muted/50 text-xs font-mono">
-                      {item.shortcut}
-                    </span>
-                  )}
-                </button>
-              );
+          <nav className="flex-1 p-2 overflow-y-auto scroll-fade-container" style={{ '--fade-color': '#141428', position: 'relative', zIndex: 50 }}>
+            {SIDEBAR_GROUPS.map((group) => {
+              const isGroupCollapsed = !!collapsedGroups[group.id];
+              const groupItems = group.items.map(id => NAV_ITEMS.find(item => item.id === id)).filter(Boolean);
+              const hasActiveItem = groupItems.some(item => item.id === activePage);
+              const isSingleDashboard = group.id === 'dashboard';
 
-              if (sidebarCollapsed) {
-                return (
-                  <Tooltip key={item.id} text={item.label} show={sidebarCollapsed}>
-                    {NavButton}
-                  </Tooltip>
-                );
-              }
-              return NavButton;
+              return (
+                <div key={group.id}>
+                  {/* Group header */}
+                  {!isSingleDashboard && !sidebarCollapsed && (
+                    <button
+                      onClick={() => setCollapsedGroups(prev => ({ ...prev, [group.id]: !prev[group.id] }))}
+                      className="w-full text-left flex items-center gap-1 hover:text-neon-green/80 transition-colors"
+                      style={{
+                        fontSize: '9px',
+                        textTransform: 'uppercase',
+                        letterSpacing: '1.5px',
+                        color: hasActiveItem ? '#00ff88' : '#555',
+                        padding: '12px 12px 4px',
+                        cursor: 'pointer',
+                        userSelect: 'none',
+                      }}
+                    >
+                      <span style={{ display: 'inline-block', width: '10px', fontSize: '8px', transition: 'transform 0.2s ease', transform: isGroupCollapsed ? 'rotate(0deg)' : 'rotate(90deg)' }}>▸</span>
+                      {group.label}
+                    </button>
+                  )}
+
+                  {/* Group items */}
+                  <div
+                    style={{
+                      maxHeight: (!isSingleDashboard && !sidebarCollapsed && isGroupCollapsed) ? '0px' : `${groupItems.length * 48}px`,
+                      overflow: 'hidden',
+                      transition: 'max-height 0.25s ease',
+                    }}
+                  >
+                    {groupItems.map((item) => {
+                      const isActive = activePage === item.id;
+                      const NavButton = (
+                        <button
+                          key={item.id}
+                          onClick={() => setActivePage(item.id)}
+                          className={`
+                            w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm
+                            nav-item-glow relative
+                            ${!isSingleDashboard && !sidebarCollapsed ? 'pl-5' : ''}
+                            ${isActive
+                              ? 'text-neon-green bg-neon-green/5 nav-active-accent'
+                              : 'text-retro-muted hover:text-neon-green'
+                            }
+                          `}
+                        >
+                          <item.icon
+                            size={18}
+                            className={`flex-shrink-0 transition-colors duration-200 ${
+                              isActive ? 'text-neon-green' : 'text-retro-muted group-hover:text-neon-green'
+                            }`}
+                          />
+                          {isActive && !sidebarCollapsed && <span className="led-dot ml-[-4px]" />}
+                          <AnimatePresence>
+                            {!sidebarCollapsed && (
+                              <motion.span
+                                initial={{ opacity: 0 }}
+                                animate={{ opacity: 1 }}
+                                exit={{ opacity: 0 }}
+                                className="whitespace-nowrap"
+                              >
+                                {item.label}
+                              </motion.span>
+                            )}
+                          </AnimatePresence>
+                          {!sidebarCollapsed && item.shortcut && (
+                            <span className="ml-auto text-retro-muted/50 text-xs font-mono">
+                              {item.shortcut}
+                            </span>
+                          )}
+                        </button>
+                      );
+
+                      if (sidebarCollapsed) {
+                        return (
+                          <Tooltip key={item.id} text={item.label} show={sidebarCollapsed}>
+                            {NavButton}
+                          </Tooltip>
+                        );
+                      }
+                      return NavButton;
+                    })}
+                  </div>
+                </div>
+              );
             })}
           </nav>
 
@@ -794,27 +872,78 @@ function AppContent() {
         {/* Main Content */}
         <main className="flex-1 overflow-y-auto scroll-fade-container" style={{ '--fade-color': '#0a0a1a' }}>
           <div className="max-w-7xl mx-auto p-4 md:p-6">
-            {/* Header: Breadcrumb + Status */}
+            {/* Header: Breadcrumb + Status Indicators */}
             <div className="flex items-center justify-between mb-2">
               <Breadcrumb activePage={activePage} />
-              <div className="flex items-center gap-3 text-xs font-mono text-retro-muted">
-                {/* Connection indicator */}
-                <div className="flex items-center gap-1.5">
-                  <span className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-400 shadow-green-400/50 shadow-sm' : 'bg-red-400'}`} />
+              <div className="flex items-center gap-2 text-xs font-mono text-retro-muted">
+                {/* Connection status pill */}
+                <div style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 4,
+                  background: isConnected ? '#00ff8815' : '#ff6b6b15',
+                  border: `1px solid ${isConnected ? '#00ff8833' : '#ff6b6b33'}`,
+                  borderRadius: 12, padding: '2px 8px',
+                  fontSize: 10, fontFamily: "'JetBrains Mono', monospace",
+                  color: isConnected ? '#00ff88' : '#ff6b6b',
+                  transition: 'all 0.3s ease',
+                }}>
+                  <span style={{
+                    width: 6, height: 6, borderRadius: '50%',
+                    background: isConnected ? '#00ff88' : '#ff6b6b',
+                    boxShadow: isConnected ? '0 0 6px #00ff8866' : '0 0 6px #ff6b6b66',
+                    animation: isConnected ? 'pulse-glow 2s ease-in-out infinite' : 'none',
+                  }} />
                   <span className="hidden sm:inline">{isConnected ? 'Live' : 'Offline'}</span>
                 </div>
 
                 {/* Training badge */}
                 {isTraining && (
-                  <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full border border-neon-green/30 bg-neon-green/5">
-                    <span className="w-1.5 h-1.5 rounded-full bg-neon-green training-pulse" />
-                    <span className="text-neon-green hidden sm:inline">Training</span>
+                  <div style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 4,
+                    background: '#00ff8812', border: '1px solid #00ff8833',
+                    borderRadius: 12, padding: '2px 8px',
+                    fontSize: 10, fontFamily: "'JetBrains Mono', monospace",
+                    color: '#00ff88',
+                  }}>
+                    <span style={{
+                      width: 5, height: 5, borderRadius: '50%',
+                      background: '#00ff88',
+                      animation: 'pulse-glow 1.5s ease-in-out infinite',
+                    }} />
+                    <span className="hidden sm:inline">Training</span>
+                  </div>
+                )}
+
+                {/* Current episode pill */}
+                {metrics.episodes.length > 0 && (
+                  <div style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 4,
+                    background: '#00ddff0d', border: '1px solid #00ddff22',
+                    borderRadius: 12, padding: '2px 8px',
+                    fontSize: 10, fontFamily: "'JetBrains Mono', monospace",
+                    color: '#00ddff',
+                  }}>
+                    <span style={{ opacity: 0.6 }}>EP</span>
+                    <span>{metrics.episodes[metrics.episodes.length - 1]}</span>
+                  </div>
+                )}
+
+                {/* Sessions count pill */}
+                {sessions.length > 0 && (
+                  <div style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 4,
+                    background: '#aa66ff0d', border: '1px solid #aa66ff22',
+                    borderRadius: 12, padding: '2px 8px',
+                    fontSize: 10, fontFamily: "'JetBrains Mono', monospace",
+                    color: '#aa66ff',
+                  }}>
+                    <span style={{ opacity: 0.6 }}>SES</span>
+                    <span>{sessions.length}</span>
                   </div>
                 )}
 
                 {/* Keyboard shortcut hints */}
-                <span className="hidden md:inline text-retro-muted/40">
-                  1-9 nav · e/r/p/d/v/t/l/s/g quick · Space pause
+                <span className="hidden lg:inline text-retro-muted/40 ml-1">
+                  1-9 nav · Space pause
                 </span>
               </div>
             </div>
@@ -856,7 +985,9 @@ function AppContent() {
                 ) : (
                   <ErrorBoundary key={activePage}>
                   <Suspense fallback={<LoadingScreen />}>
-                    <PageContent activePage={activePage} props={pageProps} />
+                    <PageTransition pageKey={activePage}>
+                      <PageContent activePage={activePage} props={pageProps} />
+                    </PageTransition>
                   </Suspense>
                 </ErrorBoundary>
                 )}

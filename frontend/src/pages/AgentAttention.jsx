@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import { Eye, MousePointerClick, Wifi, WifiOff } from 'lucide-react';
 import * as api from '../utils/api';
 import { ensureSprites, drawSprite, ParticleSystem, C as PC, SPRITE_NAMES } from '../utils/pixelEngine';
+import EmptyCanvas from '../components/EmptyCanvas';
 
 const NUM_POSITIONS = 5;
 const NUM_OBJECTS = 10;
@@ -223,9 +224,7 @@ export default function AgentAttention() {
       </div>
 
       {!connected && (
-        <div className="bg-robot-amber/10 border border-robot-amber/30 text-robot-amber px-4 py-2 rounded-lg text-sm">
-          Connect to backend to view real attention weights
-        </div>
+        <EmptyCanvas title="Backend disconnected" subtitle="Connect to backend to view real attention weights" icon="🔌" />
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -239,7 +238,7 @@ export default function AgentAttention() {
             {loading ? (
               <p className="text-retro-muted text-sm skeleton-pulse">Loading...</p>
             ) : conversations.length === 0 ? (
-              <p className="text-retro-muted text-sm">No conversations available</p>
+              <EmptyCanvas title="No conversations available" subtitle="Connect to backend and start training" icon="👁️" />
             ) : conversations.map((conv, i) => {
               const hasAttn = conv.attention_weights && conv.attention_weights.length > 0;
               return (
@@ -356,11 +355,7 @@ export default function AgentAttention() {
               </div>
             </div>
           ) : selectedConv ? (
-            <div className="h-64 flex flex-col items-center justify-center text-retro-muted gap-2">
-              <div className="led-dot-amber" />
-              <p className="text-sm">No attention data for this conversation</p>
-              <p className="text-xs">Run a new training session to generate attention weights</p>
-            </div>
+            <EmptyCanvas title="No attention data" subtitle="Run a training session to generate attention weights" icon="🔬" />
           ) : (
             <div className="h-64 flex items-center justify-center text-retro-muted">
               Select a conversation to see attention patterns

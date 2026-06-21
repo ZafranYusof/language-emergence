@@ -5,6 +5,9 @@ import MetricsChart from './MetricsChart';
 import ConversationCard from './ConversationCard';
 import MetricTooltip from './MetricTooltip';
 import { SkeletonCard, SkeletonChart, SkeletonList } from './Skeleton';
+import Card from './Card';
+import SectionTitle from './SectionTitle';
+import EmptyState from './EmptyState';
 
 // ─── Animated Counter Hook ───────────────────────────────────────────────
 function useAnimatedValue(target, duration = 600) {
@@ -842,14 +845,14 @@ export default function Dashboard({ sessions = [], metrics = {}, conversations =
       {/* ── Sessions & Recent Conversations ── */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6" style={{ position: 'relative', zIndex: 1 }}>
         {/* Active Sessions */}
-        <div className="retro-card rounded-xl p-4">
-          <h3 className="text-sm font-medium text-retro-muted mb-3 font-heading uppercase tracking-wider">Active Sessions</h3>
+        <Card accent="#00ff88" padding={16}>
+          <SectionTitle icon="🗂" color="#00ff88">Active Sessions</SectionTitle>
           {isLoading ? (
             <SkeletonList count={3} />
           ) : (
             <div className="space-y-2">
               {sessions.length === 0 ? (
-                <p className="text-retro-muted text-sm">No sessions yet. Use Quick Start to begin.</p>
+                <EmptyState icon="🚀" message="No sessions yet" hint="Use Quick Start to begin" />
               ) : (
                 sessions.map((session) => (
                   <button
@@ -885,20 +888,17 @@ export default function Dashboard({ sessions = [], metrics = {}, conversations =
               )}
             </div>
           )}
-        </div>
+        </Card>
 
         {/* Recent Conversations */}
-        <div className="retro-card rounded-xl p-4">
-          <div className="flex items-center gap-2 mb-3">
-            <MessageSquare size={14} className="text-retro-muted" />
-            <h3 className="text-sm font-medium text-retro-muted font-heading uppercase tracking-wider">Recent Conversations</h3>
-          </div>
+        <Card accent="#00ddff" padding={16}>
+          <SectionTitle icon="💬" color="#00ddff">Recent Conversations</SectionTitle>
           {isLoading ? (
             <SkeletonList count={3} />
           ) : (
             <div className="space-y-2 max-h-96 overflow-y-auto">
               {conversations.length === 0 ? (
-                <p className="text-retro-muted text-sm">No conversations yet</p>
+                <EmptyState icon="💬" message="No conversations yet" hint="Start training to see agent communication" />
               ) : (
                 conversations.slice(0, 5).map((conv, i) => (
                   <ConversationCard key={conv.id || i} conversation={conv} index={i} />
@@ -906,7 +906,7 @@ export default function Dashboard({ sessions = [], metrics = {}, conversations =
               )}
             </div>
           )}
-        </div>
+        </Card>
       </div>
 
       {/* ── Keyboard Shortcuts Reference ── */}
@@ -914,13 +914,11 @@ export default function Dashboard({ sessions = [], metrics = {}, conversations =
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.4 }}
-        className="retro-card rounded-xl p-4"
+        className=""
         style={{ position: 'relative', zIndex: 1 }}
       >
-        <h3 className="text-sm font-medium text-retro-muted mb-3 font-heading uppercase tracking-wider flex items-center gap-2">
-          <span className="text-neon-green text-xs">&#9000;</span>
-          Keyboard Shortcuts
-        </h3>
+        <Card accent="#ffaa00" padding={16}>
+        <SectionTitle icon="⌨" color="#ffaa00">Keyboard Shortcuts</SectionTitle>
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-x-6 gap-y-1.5 text-xs font-mono">
           {[
             { key: '1', label: 'Dashboard' },
@@ -951,6 +949,7 @@ export default function Dashboard({ sessions = [], metrics = {}, conversations =
             </div>
           ))}
         </div>
+        </Card>
       </motion.div>
     </div>
   );

@@ -2,6 +2,9 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { API_URL, WS_URL } from '../config';
 import { useWebSocket } from '../hooks/useWebSocket';
 import { ensureSprites, drawSprite, drawSpeechBubble, drawBar, ParticleSystem, C as PC } from '../utils/pixelEngine';
+import Card from '../components/Card';
+import SectionTitle from '../components/SectionTitle';
+import EmptyState from '../components/EmptyState';
 
 const FEATURES = [
   { name: 'hue', label: 'Hue', icon: '🎨' },
@@ -989,9 +992,8 @@ export default function CommunicationArena({ sessionId }) {
 
       {/* Message Display */}
       {current && (
-        <div style={{
-          marginTop: 16, background: '#111', border: '1px solid #333',
-          borderRadius: 8, padding: '12px 16px',
+        <Card accent="#ffcc00" style={{
+          marginTop: 16, padding: '12px 16px',
           display: 'flex', alignItems: 'center', gap: 16,
         }}>
           <div style={{ fontFamily: "'Press Start 2P', monospace", fontSize: 8, color: '#666' }}>MESSAGE</div>
@@ -1010,7 +1012,7 @@ export default function CommunicationArena({ sessionId }) {
           }}>
             {current.correct ? '✓ CORRECT' : '✗ WRONG'}
           </div>
-        </div>
+        </Card>
       )}
 
       {/* Battle History Log */}

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { API_URL } from '../config';
 import { ensureSprites, drawSprite, drawSpeechBubble, ParticleSystem, C as PC, SPRITE_NAMES } from '../utils/pixelEngine';
+import EmptyCanvas from '../components/EmptyCanvas';
 
 /* ── Colour palette (retro robot theme) ── */
 const C = {
@@ -387,7 +388,7 @@ function RateConversationsTab() {
               React.createElement('div', { style: { fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: C.dim, marginBottom: 8 } }, 'RATING DISTRIBUTION'),
               React.createElement(BarChart, { data: distData, labels: ['1\u2605', '2\u2605', '3\u2605', '4\u2605', '5\u2605'], colors: distColors })
             )
-          ) : React.createElement('div', { style: { color: C.dim, fontSize: 12, fontFamily: "'JetBrains Mono', monospace", textAlign: 'center', padding: 20 } }, 'No feedback data yet')
+          ) : React.createElement(EmptyCanvas, { title: 'No feedback data yet', subtitle: 'Rate conversations to build feedback statistics', icon: '📊' })
         )
       ),
       /* Conversations List */
@@ -396,7 +397,7 @@ function RateConversationsTab() {
         loading
           ? React.createElement('div', { style: { color: C.dim, textAlign: 'center', padding: 20, fontFamily: "'JetBrains Mono', monospace" } }, 'Loading conversations...')
           : filteredConversations.length === 0
-            ? React.createElement('div', { style: { color: C.dim, textAlign: 'center', padding: 20, fontFamily: "'JetBrains Mono', monospace" } }, 'No conversations found')
+            ? React.createElement(EmptyCanvas, { title: 'No conversations found', subtitle: 'Select a session with conversations to rate', icon: '💬' })
             : React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 12, maxHeight: 400, overflowY: 'auto' } },
                 filteredConversations.map(function(conv, idx) {
                   return React.createElement('div', {

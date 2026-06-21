@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { fetchMinds } from '../utils/api';
 import { ensureSprites, drawSprite, drawSpeechBubble, ParticleSystem, C as PC } from '../utils/pixelEngine';
+import EmptyCanvas from '../components/EmptyCanvas';
 
 /* ───── colour palette ───── */
 const C = {
@@ -426,7 +427,7 @@ function ThoughtColumn({ label, color, thoughts, icon }) {
       </div>
       <div style={{ maxHeight: 260, overflowY: 'auto', paddingRight: 4 }}>
         {thoughts.length === 0 ? (
-          <div style={{ color: C.dim, fontSize: 10, textAlign: 'center', padding: 20 }}>Awaiting consciousness data...</div>
+          <EmptyCanvas title="Awaiting consciousness data..." subtitle="Start training to visualize agent minds" icon="🧠" />
         ) : thoughts.map((t, i) => (
           <div key={t.id} style={{
             display: 'flex', gap: 8, alignItems: 'flex-start', marginBottom: 8,

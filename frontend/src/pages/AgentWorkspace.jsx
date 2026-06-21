@@ -1,5 +1,8 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { API_URL } from '../config';
+import Card from '../components/Card';
+import SectionTitle from '../components/SectionTitle';
+import EmptyState from '../components/EmptyState';
 
 // ─── COLOR CONSTANTS ───────────────────────────────────────────
 const COLORS = {
@@ -1071,23 +1074,18 @@ function LogEntry({ entry }) {
 function DetailPanel({ agent, onDeselect }) {
   if (!agent) {
     return (
-      <div style={{
-        flex: '0 0 240px', backgroundColor: COLORS.panelBg,
-        border: `1px solid ${COLORS.panelBorder}`, borderRadius: 4,
-        padding: 16, display: 'flex', alignItems: 'center', justifyContent: 'center',
-        color: '#444', fontFamily: 'monospace', fontSize: 12, textAlign: 'center',
+      <Card accent="#00ff88" style={{
+        flex: '0 0 240px', display: 'flex', alignItems: 'center', justifyContent: 'center',
       }}>
-        Click an agent<br />to view details
-      </div>
+        <EmptyState icon="🤖" message="Click an agent to view details" />
+      </Card>
     );
   }
   const d = agent.def;
   const s = agent.state;
   return (
-    <div style={{
-      flex: '0 0 240px', backgroundColor: COLORS.panelBg,
-      border: `1px solid ${COLORS.border}44`, borderRadius: 4,
-      padding: 12, overflow: 'auto',
+    <Card accent={d.color} style={{
+      flex: '0 0 240px', padding: 12, overflow: 'auto',
     }}>
       {/* header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
@@ -1191,7 +1189,7 @@ function DetailPanel({ agent, onDeselect }) {
           </div>
         ))}
       </div>
-    </div>
+    </Card>
   );
 }
 

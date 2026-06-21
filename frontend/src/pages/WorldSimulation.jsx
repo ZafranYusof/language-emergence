@@ -1,5 +1,8 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { API_URL } from '../config';
+import Card from '../components/Card';
+import SectionTitle from '../components/SectionTitle';
+import EmptyState from '../components/EmptyState';
 
 /* ───── colour palette (retro robot theme) ───── */
 const C = {
@@ -1558,8 +1561,8 @@ export default function WorldSimulation() {
         {/* Right sidebar */}
         <div style={{ flex: 1, minWidth: 260, maxWidth: 360, display: 'flex', flexDirection: 'column', gap: 12 }}>
           {/* Stats */}
-          <div style={panelStyle}>
-            <div style={panelTitleStyle}>STATS</div>
+          <Card accent="#00ff88" style={panelStyle}>
+            <SectionTitle icon="📊" color={C.green}>STATS</SectionTitle>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
               <StatBlock label="TICK" value={world?.tick || 0} color={C.cyan} />
               <StatBlock label="TOTAL ENERGY" value={totalEnergy.toFixed(0)} color={C.green} />
@@ -1573,11 +1576,11 @@ export default function WorldSimulation() {
               <span style={{ color: C.dim }}>WEATHER: <span style={{ color: C.cyan }}>{(world?.weather || 'clear').toUpperCase()}</span></span>
               <span style={{ color: C.dim }}>TIME: <span style={{ color: C.amber }}>{getDayNightPhase(world).phase.toUpperCase()}</span></span>
             </div>
-          </div>
+          </Card>
 
           {/* Agent list */}
-          <div style={panelStyle}>
-            <div style={panelTitleStyle}>AGENTS</div>
+          <Card accent="#ffaa00" style={panelStyle}>
+            <SectionTitle icon="🤖" color={C.amber}>AGENTS</SectionTitle>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               {world?.agents?.map(a => {
                 const spriteName = agentSpritesRef.current[a.agent_id];
@@ -1608,7 +1611,7 @@ export default function WorldSimulation() {
                 );
               })}
             </div>
-          </div>
+          </Card>
 
           {/* Agent detail panel */}
           {selAgent && (
@@ -1758,11 +1761,11 @@ export default function WorldSimulation() {
           )}
 
           {/* Chat bubbles feed */}
-          <div style={panelStyle}>
-            <div style={panelTitleStyle}>LIVE CHAT</div>
+          <Card accent="#00ddff" style={panelStyle}>
+            <SectionTitle icon="💬" color={C.cyan}>LIVE CHAT</SectionTitle>
             <div style={{ maxHeight: 160, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 4 }}>
               {world?.chat_bubbles?.length === 0 && (
-                <div style={{ color: C.dim, fontSize: 11, fontFamily: 'JetBrains Mono' }}>(no active messages)</div>
+                <EmptyState icon="💬" message="No active messages" hint="Agents will chat as they interact" />
               )}
               {world?.chat_bubbles?.map((b, i) => (
                 <div key={i} style={{
@@ -1775,7 +1778,7 @@ export default function WorldSimulation() {
                 </div>
               ))}
             </div>
-          </div>
+          </Card>
         </div>
       </div>
     </div>
